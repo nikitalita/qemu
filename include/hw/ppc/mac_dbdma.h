@@ -28,6 +28,7 @@ typedef struct DBDMA_io DBDMA_io;
 
 typedef void (*DBDMA_flush)(DBDMA_io *io);
 typedef void (*DBDMA_rw)(DBDMA_io *io);
+typedef bool (*DBDMA_ready)(DBDMA_io *io);
 typedef void (*DBDMA_end)(DBDMA_io *io);
 struct DBDMA_io {
     void *opaque;
@@ -149,6 +150,7 @@ typedef struct DBDMA_channel {
     DBDMA_io io;
     DBDMA_rw rw;
     DBDMA_flush flush;
+    DBDMA_ready ready;
     dbdma_cmd current;
 } DBDMA_channel;
 
@@ -162,7 +164,7 @@ typedef struct {
 
 void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan, 
                             qemu_irq irq, DBDMA_rw rw, DBDMA_flush flush,
-                            void *opaque);
+                            DBDMA_ready ready, void *opaque);
 void DBDMA_kick(DBDMAState *dbdma);
 void* DBDMA_init (MemoryRegion **dbdma_mem);
 

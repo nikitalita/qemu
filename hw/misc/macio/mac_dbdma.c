@@ -549,7 +549,7 @@ void DBDMA_kick(DBDMAState *dbdma)
 
 void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan, 
                             qemu_irq irq, DBDMA_rw rw, DBDMA_flush flush,
-                            void *opaque)
+                            DBDMA_ready ready, void *opaque)
 {
     DBDMAState *s = dbdma;
     DBDMA_channel *ch = &s->channels[nchan];
@@ -560,6 +560,7 @@ void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan,
     ch->channel = nchan;
     ch->rw = rw;
     ch->flush = flush;
+    ch->ready = ready;
     ch->io.opaque = opaque;
     ch->io.channel = ch;
     

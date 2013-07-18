@@ -192,6 +192,19 @@ done:
     io->dma_end(io);
 }
 
+
+static bool pmac_ide_ready(DBDMA_io *io)
+{
+    MACIOIDEState *m = io->opaque;
+    IDEState *s = idebus_active_if(&m->bus);
+
+    if (s->drive_kind == IDE_CD) {
+        return (s->packet_transfer_size > 0 ? true : false);
+    }
+    
+    return false;
+}
+
 static void pmac_ide_transfer(DBDMA_io *io)
 {
     MACIOIDEState *m = io->opaque;
@@ -455,7 +468,8 @@ void macio_ide_register_dma(MACIOIDEState *s, void *dbdma, int channel)
 {
     s->dbdma = dbdma;
     DBDMA_register_channel(&s->ch, dbdma, channel, s->dma_irq,
-                           pmac_ide_transfer, pmac_ide_flush, s);
+                           pmac_ide_transfer, pmac_ide_flush, 
+			   pmac_ide_ready, s);
 }
 
 type_init(macio_ide_register_types)
