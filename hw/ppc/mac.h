@@ -29,6 +29,7 @@
 #include "hw/sysbus.h"
 #include "hw/ide/internal.h"
 #include "hw/input/adb.h"
+#include "hw/ppc/mac_dbdma.h"
 
 /* SMP is not enabled, for now */
 #define MAX_CPUS 1
@@ -133,6 +134,7 @@ typedef struct MACIOIDEState {
     BlockDriverAIOCB *aiocb;
     IDEDMA dma;
     void *dbdma;
+    DBDMA_channel *ch;
 } MACIOIDEState;
 
 void macio_ide_init_drives(MACIOIDEState *ide, DriveInfo **hd_table);

@@ -160,8 +160,8 @@ typedef struct {
 
 /* Externally callable functions */
 
-void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
-                            DBDMA_rw rw, DBDMA_flush flush,
+void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan, 
+                            qemu_irq irq, DBDMA_rw rw, DBDMA_flush flush,
                             void *opaque);
 void DBDMA_kick(DBDMAState *dbdma);
 void* DBDMA_init (MemoryRegion **dbdma_mem);

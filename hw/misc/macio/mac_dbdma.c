@@ -547,8 +547,8 @@ void DBDMA_kick(DBDMAState *dbdma)
     qemu_bh_schedule(dbdma->bh);
 }
 
-void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
-                            DBDMA_rw rw, DBDMA_flush flush,
+void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan, 
+                            qemu_irq irq, DBDMA_rw rw, DBDMA_flush flush,
                             void *opaque)
 {
     DBDMAState *s = dbdma;
@@ -562,6 +562,8 @@ void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
     ch->flush = flush;
     ch->io.opaque = opaque;
     ch->io.channel = ch;
+    
+    *channel = ch;
 }
 
 static void
