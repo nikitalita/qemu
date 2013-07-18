@@ -31,7 +31,7 @@
 #include <hw/ide/internal.h>
 
 /* debug MACIO */
-// #define DEBUG_MACIO
+ #define DEBUG_MACIO
 
 #ifdef DEBUG_MACIO
 static const int debug_macio = 1;

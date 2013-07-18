@@ -42,7 +42,7 @@
 #include "qemu/main-loop.h"
 
 /* debug DBDMA */
-//#define DEBUG_DBDMA
+#define DEBUG_DBDMA
 
 #ifdef DEBUG_DBDMA
 #define DBDMA_DPRINTF(fmt, ...)                                 \
