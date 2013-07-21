@@ -38,8 +38,10 @@ struct DBDMA_io {
     int is_last;
     int is_dma_out;
     DBDMA_end dma_end;
-    /* DMA is in progress, don't start another one */
+    /* DMA block command is in progress, don't start another one */
     bool processing;
+    /* DMA transfer(s) in progress */
+    bool xfer;
 };
 
 /*

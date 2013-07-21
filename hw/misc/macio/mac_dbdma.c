@@ -255,28 +255,33 @@ static void conditional_branch(DBDMA_channel *ch)
 
 static void channel_run(DBDMA_channel *ch);
 
-static void dbdma_end(DBDMA_io *io)
+static void update_command(DBDMA_channel *ch)
 {
-    DBDMA_channel *ch = io->channel;
     dbdma_cmd *current = &ch->current;
-
-    DBDMA_DPRINTF("%s\n", __func__);
-
-    if (conditional_wait(ch))
-        goto wait;
-
+	
     current->xfer_status = cpu_to_le16(ch->regs[DBDMA_STATUS]);
-    current->res_count = cpu_to_le16(io->len);
+    current->res_count = cpu_to_le16(ch->io.len);
     dbdma_cmdptr_save(ch);
-    if (io->is_last)
+    if (ch->io.is_last)
         ch->regs[DBDMA_STATUS] &= ~FLUSH;
 
     conditional_interrupt(ch);
     conditional_branch(ch);
+}
 
-wait:
+static void dbdma_end(DBDMA_io *io)
+{
+    DBDMA_channel *ch = io->channel;
+
+    DBDMA_DPRINTF("%s\n", __func__);
+
+    if (!conditional_wait(ch)) {
+	update_command(ch);
+    }
+
     /* Indicate that we're ready for a new DMA round */
     ch->io.processing = false;
+    ch->io.xfer = false;
 
     if ((ch->regs[DBDMA_STATUS] & RUN) &&
         (ch->regs[DBDMA_STATUS] & ACTIVE))
@@ -312,7 +317,7 @@ static void start_output(DBDMA_channel *ch, int key, uint32_t addr,
 static void start_input(DBDMA_channel *ch, int key, uint32_t addr,
                        uint16_t req_count, int is_last)
 {
-    DBDMA_DPRINTF("start_input\n");
+    DBDMA_DPRINTF("start_input: %d\n", is_last);
 
     /* KEY_REGS, KEY_DEVICE and KEY_STREAM
      * are not implemented in the mac-io chip
@@ -329,9 +334,23 @@ static void start_input(DBDMA_channel *ch, int key, uint32_t addr,
     ch->io.is_last = is_last;
     ch->io.dma_end = dbdma_end;
     ch->io.is_dma_out = 0;
-    ch->io.processing = true;
-    if (ch->rw) {
-        ch->rw(&ch->io);
+    
+    if (ch->ready(&ch->io)) {
+        DBDMA_DPRINTF("ready to transfer data\n");
+
+        if (ch->rw) {
+            ch->rw(&ch->io);
+        }
+
+        if (!ch->io.processing) {
+            if (!conditional_wait(ch)) {
+                update_command(ch);
+            }
+
+            DBDMA_kick(dbdma_from_ch(ch));
+        }
+    } else {
+        DBDMA_DPRINTF("waiting for data ready\n");
     }
 }
 
@@ -563,6 +582,8 @@ void DBDMA_register_channel(DBDMA_channel **channel, void *dbdma, int nchan,
     ch->ready = ready;
     ch->io.opaque = opaque;
     ch->io.channel = ch;
+    ch->io.processing = false;
+    ch->io.xfer = false;
     
     *channel = ch;
 }
