@@ -356,7 +356,10 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
 	MACIO_DPRINTF("Data ready for HD device: %llx bytes\n", s->nsector * BDRV_SECTOR_SIZE);
     }
     
-    DBDMA_kick(m->dbdma);
+    /* Only kick if the DMA controller is active */
+    if (m->ch->regs[DBDMA_STATUS] & ACTIVE) {
+        DBDMA_kick(m->dbdma);
+    }
 }
 
 static const IDEDMAOps dbdma_ops = {
