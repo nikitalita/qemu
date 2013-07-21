@@ -42,7 +42,7 @@
 #include "qemu/main-loop.h"
 
 /* debug DBDMA */
-#define DEBUG_DBDMA
+//#define DEBUG_DBDMA
 
 #ifdef DEBUG_DBDMA
 #define DBDMA_DPRINTF(fmt, ...)                                 \
@@ -308,9 +308,23 @@ static void start_output(DBDMA_channel *ch, int key, uint32_t addr,
     ch->io.is_last = is_last;
     ch->io.dma_end = dbdma_end;
     ch->io.is_dma_out = 1;
-    ch->io.processing = true;
-    if (ch->rw) {
-        ch->rw(&ch->io);
+
+    if (ch->ready(&ch->io)) {
+        DBDMA_DPRINTF("ready to transfer data\n");
+    
+        if (ch->rw) {
+            ch->rw(&ch->io);
+        }
+    
+        if (!ch->io.processing) {
+            if (!conditional_wait(ch)) {
+                update_command(ch);
+            }
+
+            DBDMA_kick(dbdma_from_ch(ch));
+        }    
+    } else {
+        DBDMA_DPRINTF("waiting for data ready\n");
     }
 }
 

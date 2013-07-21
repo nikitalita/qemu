@@ -31,7 +31,7 @@
 #include <hw/ide/internal.h>
 
 /* debug MACIO */
- #define DEBUG_MACIO
+// #define DEBUG_MACIO
 
 #ifdef DEBUG_MACIO
 static const int debug_macio = 1;
@@ -51,96 +51,25 @@ static const int debug_macio = 0;
 
 #define MACIO_PAGE_SIZE 4096
 
-static void pmac_ide_atapi_transfer_cb(void *opaque, int ret)
+static void pmac_ide_transfer_cb(void *opaque, int ret)
 {
     DBDMA_io *io = opaque;
     MACIOIDEState *m = io->opaque;
     IDEState *s = idebus_active_if(&m->bus);
 
     MACIO_DPRINTF("End of block operation\n");
-    ide_atapi_cmd_ok(s);
+    
+    if (s->drive_kind == IDE_CD) {
+        ide_atapi_cmd_ok(s);
+    } else {
+        s->nsector = 0;
+        s->status = READY_STAT | SEEK_STAT;
+        ide_set_irq(s->bus);
+    }
     
     m->aiocb = NULL;
     qemu_sglist_destroy(&s->sg);
     
-    if (s->dma_cmd == IDE_DMA_READ || s->dma_cmd == IDE_DMA_WRITE) {
-        bdrv_acct_done(s->bs, &s->acct);
-    }
-    io->dma_end(io);
-}
-
-static void pmac_ide_transfer_cb(void *opaque, int ret)
-{
-    DBDMA_io *io = opaque;
-    MACIOIDEState *m = io->opaque;
-    IDEState *s = idebus_active_if(&m->bus);
-    int n;
-    int64_t sector_num;
-
-    if (ret < 0) {
-        MACIO_DPRINTF("DMA error\n");
-        m->aiocb = NULL;
-        qemu_sglist_destroy(&s->sg);
-        ide_dma_error(s);
-        goto done;
-    }
-
-    sector_num = ide_get_sector(s);
-    MACIO_DPRINTF("io_buffer_size = %#x\n", s->io_buffer_size);
-    if (s->io_buffer_size > 0) {
-        m->aiocb = NULL;
-        qemu_sglist_destroy(&s->sg);
-        n = (s->io_buffer_size + 0x1ff) >> 9;
-        sector_num += n;
-        ide_set_sector(s, sector_num);
-        s->nsector -= n;
-    }
-
-    if (s->nsector == 0) {
-        MACIO_DPRINTF("end of transfer\n");
-        s->status = READY_STAT | SEEK_STAT;
-        ide_set_irq(s->bus);
-    }
-
-    if (io->len == 0) {
-        MACIO_DPRINTF("end of DMA\n");
-        goto done;
-    }
-
-    /* launch next transfer */
-
-    s->io_buffer_index = 0;
-    s->io_buffer_size = MIN(io->len, s->nsector * 512);
-
-    MACIO_DPRINTF("io->len = %#x\n", io->len);
-
-    qemu_sglist_init(&s->sg, DEVICE(m), io->len / MACIO_PAGE_SIZE + 1,
-                     &address_space_memory);
-    qemu_sglist_add(&s->sg, io->addr, io->len);
-    io->addr += io->len;
-    io->len = 0;
-
-    MACIO_DPRINTF("sector_num=%" PRId64 " n=%d, nsector=%d, cmd_cmd=%d\n",
-                  sector_num, n, s->nsector, s->dma_cmd);
-
-    switch (s->dma_cmd) {
-    case IDE_DMA_READ:
-        m->aiocb = dma_bdrv_read(s->bs, &s->sg, sector_num,
-                                 pmac_ide_transfer_cb, io);
-        break;
-    case IDE_DMA_WRITE:
-        m->aiocb = dma_bdrv_write(s->bs, &s->sg, sector_num,
-                                  pmac_ide_transfer_cb, io);
-        break;
-    case IDE_DMA_TRIM:
-        m->aiocb = dma_bdrv_io(s->bs, &s->sg, sector_num,
-                               ide_issue_trim, pmac_ide_transfer_cb, io,
-                               DMA_DIRECTION_TO_DEVICE);
-        break;
-    }
-    return;
-
-done:
     if (s->dma_cmd == IDE_DMA_READ || s->dma_cmd == IDE_DMA_WRITE) {
         bdrv_acct_done(s->bs, &s->acct);
     }
@@ -156,13 +85,14 @@ static bool pmac_ide_ready(DBDMA_io *io)
         return (s->packet_transfer_size > 0 ? true : false);
     }
     
-    return false;
+    return (s->nsector > 0 ? true : false);
 }
 
 static void pmac_ide_transfer(DBDMA_io *io)
 {
     MACIOIDEState *m = io->opaque;
     IDEState *s = idebus_active_if(&m->bus);
+    int64_t sector_num;
 
     MACIO_DPRINTF("\n");
     
@@ -170,13 +100,16 @@ static void pmac_ide_transfer(DBDMA_io *io)
         MACIO_DPRINTF("Start of DMA input chain - initialising SGList\n");
         io->xfer = true;
 
-        if (s->drive_kind == IDE_CD) {
-            qemu_sglist_init(&s->sg, DEVICE(m), io->len / MACIO_PAGE_SIZE + 1,
+        qemu_sglist_init(&s->sg, DEVICE(m), io->len / MACIO_PAGE_SIZE + 1,
                      &address_space_memory);
-        }
+	
+	if (s->drive_kind == IDE_HD) {
+		s->io_buffer_size = s->nsector * BDRV_SECTOR_SIZE;
+	} else {
+		s->io_buffer_size = 0;
+	}
     }
     
-    s->io_buffer_size = 0;
     if (s->drive_kind == IDE_CD) {
         bdrv_acct_start(s->bs, &s->acct, io->len, BDRV_ACCT_READ);
 
@@ -194,24 +127,54 @@ static void pmac_ide_transfer(DBDMA_io *io)
 
             m->aiocb = dma_bdrv_read(s->bs, &s->sg,
                              (int64_t)(s->lba << 2),
-                             pmac_ide_atapi_transfer_cb, io);
+                             pmac_ide_transfer_cb, io);
         }
         
         return;
     }
 
-    switch (s->dma_cmd) {
-    case IDE_DMA_READ:
-        bdrv_acct_start(s->bs, &s->acct, io->len, BDRV_ACCT_READ);
-        break;
-    case IDE_DMA_WRITE:
-        bdrv_acct_start(s->bs, &s->acct, io->len, BDRV_ACCT_WRITE);
-        break;
-    default:
-        break;
-    }
+    s->io_buffer_size -= io->len;
+    s->nsector -= io->len >> 9;
+    
+    MACIO_DPRINTF("Adding len 0x%x to SGList\n", io->len);
+    qemu_sglist_add(&s->sg, io->addr, io->len);
+    io->addr += io->len;
+    io->len = 0;
+    
+    if (s->io_buffer_size <= 0) {
+        MACIO_DPRINTF("End of DMA transfer, start of block operation\n");
 
-    pmac_ide_transfer_cb(io, 0);
+        io->processing = true;
+
+        sector_num = ide_get_sector(s);
+
+        switch (s->dma_cmd) {
+        case IDE_DMA_READ:
+            bdrv_acct_start(s->bs, &s->acct, io->len, BDRV_ACCT_READ);
+    
+            m->aiocb = dma_bdrv_read(s->bs, &s->sg,
+                               sector_num,
+                               pmac_ide_transfer_cb, io);
+            break;
+
+        case IDE_DMA_WRITE:
+            bdrv_acct_start(s->bs, &s->acct, io->len, BDRV_ACCT_WRITE);
+
+            m->aiocb = dma_bdrv_write(s->bs, &s->sg,
+                               sector_num,
+                               pmac_ide_transfer_cb, io);    
+            break;
+
+        case IDE_DMA_TRIM:
+            m->aiocb = dma_bdrv_io(s->bs, &s->sg, sector_num,
+                               ide_issue_trim, pmac_ide_transfer_cb, io,
+                               DMA_DIRECTION_TO_DEVICE);
+            break;
+    
+        default:
+            break;
+        }
+    }
 }
 
 static void pmac_ide_flush(DBDMA_io *io)
@@ -374,6 +337,8 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
 
     if (s->drive_kind == IDE_CD) {
         MACIO_DPRINTF("Data ready for CD device: %x bytes\n", s->packet_transfer_size);
+    } else {
+	MACIO_DPRINTF("Data ready for HD device: %llx bytes\n", s->nsector * BDRV_SECTOR_SIZE);
     }
     
     DBDMA_kick(m->dbdma);
