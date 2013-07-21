@@ -59,6 +59,19 @@ static void pmac_ide_transfer_cb(void *opaque, int ret)
 
     MACIO_DPRINTF("End of block operation\n");
     
+    if (ret < 0) {
+        MACIO_DPRINTF("DMA error: %d\n", ret);
+    
+        if (s->drive_kind == IDE_CD) {
+            ide_atapi_io_error(s, ret);
+            goto done;
+        } else {
+            ide_dma_error(s);
+            goto done;
+        }
+    }
+    
+    /* DMA completed successfully */
     if (s->drive_kind == IDE_CD) {
         ide_atapi_cmd_ok(s);
     } else {
@@ -67,12 +80,14 @@ static void pmac_ide_transfer_cb(void *opaque, int ret)
         ide_set_irq(s->bus);
     }
     
+done:
     m->aiocb = NULL;
     qemu_sglist_destroy(&s->sg);
     
     if (s->dma_cmd == IDE_DMA_READ || s->dma_cmd == IDE_DMA_WRITE) {
         bdrv_acct_done(s->bs, &s->acct);
     }
+    
     io->dma_end(io);
 }
 
