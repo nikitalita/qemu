@@ -75,6 +75,8 @@
 
 #define ESCC_CLOCK 4915200
 
+#define FCODE_MAX_ROM_SIZE 0x10000
+
 struct sun4m_hwdef {
     hwaddr iommu_base, iommu_pad_base, iommu_pad_len, slavio_base;
     hwaddr intctl_base, counter_base, nvram_base, ms_kb_base;
@@ -526,11 +528,15 @@ static void apc_init(hwaddr power_base, qemu_irq cpu_halt)
     sysbus_connect_irq(s, 0, cpu_halt);
 }
 
+#define TCX_ROM_FILE  "QEMU,tcx.bin"
+
 static void tcx_init(hwaddr addr, int vram_size, int width,
                      int height, int depth)
 {
     DeviceState *dev;
     SysBusDevice *s;
+    char *fcode_filename = NULL;
+    int ret = -1;
 
     dev = qdev_create(NULL, "SUNW,tcx");
     qdev_prop_set_uint32(dev, "vram_size", vram_size);
@@ -539,22 +545,34 @@ static void tcx_init(hwaddr addr, int vram_size, int width,
     qdev_prop_set_uint16(dev, "depth", depth);
     qdev_init_nofail(dev);
     s = SYS_BUS_DEVICE(dev);
+    /* FCode ROM */
+    sysbus_mmio_map(s, 0, addr);
     /* 8-bit plane */
-    sysbus_mmio_map(s, 0, addr + 0x00800000ULL);
+    sysbus_mmio_map(s, 1, addr + 0x00800000ULL);
     /* DAC */
-    sysbus_mmio_map(s, 1, addr + 0x00200000ULL);
+    sysbus_mmio_map(s, 2, addr + 0x00200000ULL);
     /* TEC (dummy) */
-    sysbus_mmio_map(s, 2, addr + 0x00700000ULL);
+    sysbus_mmio_map(s, 3, addr + 0x00700000ULL);
     /* THC 24 bit: NetBSD writes here even with 8-bit display: dummy */
-    sysbus_mmio_map(s, 3, addr + 0x00301000ULL);
+    sysbus_mmio_map(s, 4, addr + 0x00301000ULL);
     if (depth == 24) {
         /* 24-bit plane */
-        sysbus_mmio_map(s, 4, addr + 0x02000000ULL);
+        sysbus_mmio_map(s, 5, addr + 0x02000000ULL);
         /* Control plane */
-        sysbus_mmio_map(s, 5, addr + 0x0a000000ULL);
+        sysbus_mmio_map(s, 6, addr + 0x0a000000ULL);
     } else {
         /* THC 8 bit (dummy) */
-        sysbus_mmio_map(s, 4, addr + 0x00300000ULL);
+        sysbus_mmio_map(s, 5, addr + 0x00300000ULL);
+    }
+
+    fcode_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, TCX_ROM_FILE);
+    if (fcode_filename) {
+        ret = load_image_targphys(fcode_filename, addr, FCODE_MAX_ROM_SIZE);
+    }
+
+    if (ret < 0 || ret > FCODE_MAX_ROM_SIZE) {
+        fprintf(stderr, "qemu: could not load prom '%s'\n", TCX_ROM_FILE);
+        exit(1);
     }
 }
 

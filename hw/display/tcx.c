@@ -43,6 +43,7 @@ typedef struct TCXState {
     QemuConsole *con;
     uint8_t *vram;
     uint32_t *vram24, *cplane;
+    MemoryRegion rom;
     MemoryRegion vram_mem;
     MemoryRegion vram_8bit;
     MemoryRegion vram_24bit;
@@ -536,6 +537,12 @@ static int tcx_init1(SysBusDevice *dev)
                            s->vram_size * (1 + 4 + 4));
     vmstate_register_ram_global(&s->vram_mem);
     vram_base = memory_region_get_ram_ptr(&s->vram_mem);
+
+    /* FCode ROM */
+    memory_region_init_ram(&s->rom, NULL, "tcx.prom", 0x10000);
+    vmstate_register_ram_global(&s->rom);
+    memory_region_set_readonly(&s->rom, true);
+    sysbus_init_mmio(dev, &s->rom);
 
     /* 8-bit plane */
     s->vram = vram_base;
