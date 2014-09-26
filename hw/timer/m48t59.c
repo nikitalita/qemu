@@ -670,8 +670,8 @@ M48t59State *m48t59_init(qemu_irq IRQ, hwaddr mem_base,
     return state;
 }
 
-M48t59State *m48t59_init_isa(ISABus *bus, uint32_t io_base, uint16_t size,
-                             int model)
+M48t59State *m48t59_init_isa(ISABus *bus, hwaddr mem_base, uint32_t io_base, 
+                             uint16_t size, int model)
 {
     M48t59ISAState *d;
     ISADevice *isadev;
@@ -691,7 +691,11 @@ M48t59State *m48t59_init_isa(ISABus *bus, uint32_t io_base, uint16_t size,
     if (io_base != 0) {
         isa_register_ioport(isadev, &d->io, io_base);
     }
-
+    if (mem_base != 0) {
+        memory_region_init_io(&s->iomem, OBJECT(d), &nvram_ops, s,
+                              "m48t59.nvram", s->size);
+        isa_register_ioport(isadev, &s->iomem, mem_base);
+    }
     return s;
 }
 

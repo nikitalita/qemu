@@ -29,8 +29,8 @@ typedef struct M48t59State M48t59State;
 void m48t59_write (void *private, uint32_t addr, uint32_t val);
 uint32_t m48t59_read (void *private, uint32_t addr);
 void m48t59_toggle_lock (void *private, int lock);
-M48t59State *m48t59_init_isa(ISABus *bus, uint32_t io_base, uint16_t size,
-                             int type);
+M48t59State *m48t59_init_isa(ISABus *bus, hwaddr mem_base, uint32_t io_base,
+                             uint16_t size, int type);
 M48t59State *m48t59_init(qemu_irq IRQ, hwaddr mem_base,
                          uint32_t io_base, uint16_t size, int type);
 
