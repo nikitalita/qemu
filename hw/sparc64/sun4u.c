@@ -609,7 +609,7 @@ pci_ebus_init1(PCIDevice *pci_dev)
                              0, 0x1000000);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->bar0);
     memory_region_init_alias(&s->bar1, OBJECT(s), "bar1", get_system_io(),
-                             0, 0x1000);
+                             0, 0x4000);
     pci_register_bar(pci_dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->bar1);
     return 0;
 }
@@ -873,7 +873,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
         fd[i] = drive_get(IF_FLOPPY, 0, i);
     }
     fdctrl_init_isa(isa_bus, fd);
-    nvram = m48t59_init_isa(isa_bus, 0, 0x0074, NVRAM_SIZE, 59);
+    nvram = m48t59_init_isa(isa_bus, 0x1000, 0, NVRAM_SIZE, 59);
 
     initrd_size = 0;
     initrd_addr = 0;
