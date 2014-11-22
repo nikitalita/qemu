@@ -144,8 +144,12 @@ struct BlockDriver {
 
     int coroutine_fn (*bdrv_co_readv)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
+    int coroutine_fn (*bdrv_co_preadv)(BlockDriverState *bs,
+        int64_t offset, unsigned int bytes, QEMUIOVector *qiov);    
     int coroutine_fn (*bdrv_co_writev)(BlockDriverState *bs,
         int64_t sector_num, int nb_sectors, QEMUIOVector *qiov);
+    int coroutine_fn (*bdrv_co_pwritev)(BlockDriverState *bs,
+        int64_t offset, unsigned int bytes, QEMUIOVector *qiov);    
     /*
      * Efficiently zero a region of the disk image.  Typically an image format
      * would use a compact metadata representation to implement this.  This

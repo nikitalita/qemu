@@ -3160,6 +3160,23 @@ int coroutine_fn bdrv_co_readv(BlockDriverState *bs, int64_t sector_num,
     return bdrv_co_do_readv(bs, sector_num, nb_sectors, qiov, 0);
 }
 
+static int coroutine_fn bdrv_co_do_unaligned_readv(BlockDriverState *bs,
+    int64_t offset, unsigned int bytes, QEMUIOVector *qiov,
+    BdrvRequestFlags flags)
+{
+    if (offset < 0 || offset > UINT_MAX) {
+        return -EINVAL;
+    }
+
+    return bdrv_co_do_preadv(bs, offset, bytes, qiov, flags);
+}
+
+int coroutine_fn bdrv_co_preadv(BlockDriverState *bs,
+    int64_t offset, unsigned int bytes, QEMUIOVector *qiov)
+{
+    return bdrv_co_do_unaligned_readv(bs, offset, bytes, qiov, 0);
+}
+
 int coroutine_fn bdrv_co_copy_on_readv(BlockDriverState *bs,
     int64_t sector_num, int nb_sectors, QEMUIOVector *qiov)
 {
@@ -3449,6 +3466,23 @@ int coroutine_fn bdrv_co_writev(BlockDriverState *bs, int64_t sector_num,
     trace_bdrv_co_writev(bs, sector_num, nb_sectors);
 
     return bdrv_co_do_writev(bs, sector_num, nb_sectors, qiov, 0);
+}
+
+static int coroutine_fn bdrv_co_do_unaligned_writev(BlockDriverState *bs,
+    int64_t offset, unsigned int bytes, QEMUIOVector *qiov,
+    BdrvRequestFlags flags)
+{
+    if (offset < 0 || offset > INT_MAX) {
+        return -EINVAL;
+    }
+
+    return bdrv_co_do_pwritev(bs, offset, bytes, qiov, flags);
+}
+
+int coroutine_fn bdrv_co_pwritev(BlockDriverState *bs,
+    int64_t offset, unsigned int bytes, QEMUIOVector *qiov)
+{
+    return bdrv_co_do_unaligned_writev(bs, offset, bytes, qiov, 0);
 }
 
 int coroutine_fn bdrv_co_write_zeroes(BlockDriverState *bs,
