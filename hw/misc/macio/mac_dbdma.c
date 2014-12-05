@@ -42,7 +42,7 @@
 #include "qemu/main-loop.h"
 
 /* debug DBDMA */
-//#define DEBUG_DBDMA
+#define DEBUG_DBDMA
 
 #ifdef DEBUG_DBDMA
 #define DBDMA_DPRINTF(fmt, ...)                                 \
@@ -532,7 +532,9 @@ static void DBDMA_run(DBDMAState *s)
         uint32_t status = ch->regs[DBDMA_STATUS];
         if (!ch->io.processing && (status & RUN) && (status & ACTIVE)) {
             channel_run(ch);
-        }
+        } else {
+	    printf("blocked!  ch>io.p: %d   status: %x\n", ch->io.processing, status);
+	}
     }
 }
 
