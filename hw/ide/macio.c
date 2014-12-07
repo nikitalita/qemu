@@ -79,9 +79,10 @@ static void pmac_dma_read(BlockBackend *blk,
     nsector = nb_sectors;
     remainder = (nsector << 9) - io->len;
     
-    qemu_iovec_init(&io->iov, 4096);
+    qemu_iovec_destroy(&io->iov);
+    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);
     qemu_iovec_add(&io->iov, mem, io->len);
-    MACIO_DPRINTF("--- main transfer: %x\n", io->len);
+    MACIO_DPRINTF("--- main transfer: %x @ %" HWADDR_PRIx "\n", io->len, io->addr);
     
     if (remainder) {
         MACIO_DPRINTF("--- remainder: %x\n", remainder);
@@ -90,7 +91,8 @@ static void pmac_dma_read(BlockBackend *blk,
 
     s->io_buffer_size -= io->len;
     s->io_buffer_index += io->len;
-    
+
+    //io->addr += io->len;
     io->len = 0;
     
     m->aiocb = blk_aio_readv(blk, sector_num, &io->iov, nsector,
@@ -167,6 +169,7 @@ done:
     return;
 }
 
+#if 0
 static void pmac_ide_transfer_cb(void *opaque, int ret)
 {
     DBDMA_io *io = opaque;
@@ -349,6 +352,81 @@ done:
     }
     io->dma_end(io);
 }
+#endif
+
+static void pmac_ide_transfer_cb(void *opaque, int ret)
+{
+    DBDMA_io *io = opaque;
+    MACIOIDEState *m = io->opaque;
+    IDEState *s = idebus_active_if(&m->bus);
+    int64_t sector_num;
+    int nsector, remainder;
+    
+    MACIO_DPRINTF("pmac_ide_transfer_cb\n");
+    
+    if (ret < 0) {
+        MACIO_DPRINTF("DMA error\n");
+        m->aiocb = NULL;
+        ide_dma_error(s);
+        io->remainder_len = 0;
+        goto done;
+    }
+    
+    if (!m->dma_active) {
+        MACIO_DPRINTF("waiting for data (%#x - %#x - %x)\n",
+                      s->nsector, io->len, s->status);
+        /* data not ready yet, wait for the channel to get restarted */
+        io->processing = false;
+        return;
+    }    
+
+    if (s->io_buffer_size <= 0) {
+        MACIO_DPRINTF("end of transfer\n");
+        s->status = READY_STAT | SEEK_STAT;
+        ide_set_irq(s->bus);
+        m->dma_active = false;
+        goto done;
+    }
+    
+    if (io->len == 0) {
+        MACIO_DPRINTF("End of DMA transfer\n");
+        goto done;
+    }
+    
+    /* Calculate number of sectors */
+    
+    sector_num = ide_get_sector(s) + (s->io_buffer_index >> 9);
+    nsector = (io->len + 0x1ff) >> 9;
+    remainder = io->len & 0x1ff;
+    
+    //ide_set_sector(s, sector_num);
+    s->nsector -= nsector;
+    
+    MACIO_DPRINTF("nsector: %d   remainder: %x\n", nsector, remainder);
+    //MACIO_DPRINTF("DMA addr: " DMA_ADDR_FMT " - " DMA_ADDR_FMT "  mem: %p\n", dma_addr, dma_len, mem); 
+    MACIO_DPRINTF("sector: %lx   %x\n", sector_num, nsector);
+    
+    switch (s->dma_cmd) {
+    case IDE_DMA_READ:
+        pmac_dma_read(s->blk, sector_num, nsector,
+                              pmac_ide_transfer_cb, io);
+	break;
+    case IDE_DMA_WRITE:
+	MACIO_DPRINTF("PANIC!!! It's a WRITE!\n");
+	exit(1);
+	break;
+    default:
+	MACIO_DPRINTF("WTF?\n");
+	exit(1);
+	break;
+    }
+    
+    return;
+    
+done:
+    io->dma_end(opaque);
+}
+
 
 static void pmac_ide_transfer(DBDMA_io *io)
 {
@@ -386,8 +464,6 @@ static void pmac_ide_transfer(DBDMA_io *io)
         MACIO_DPRINTF("#### do DMA transfer\n");
         pmac_ide_atapi_transfer_cb(io, 0);
         return;
-    }  else {
-        s->io_buffer_size = 0;
     }
 
     switch (s->dma_cmd) {
@@ -564,14 +640,18 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
                             BlockCompletionFunc *cb)
 {
     MACIOIDEState *m = container_of(dma, MACIOIDEState, dma);
-
-    printf("buffer_size: %x   buffer_index: %x\n", s->io_buffer_size, s->io_buffer_index);
-    printf("lba: %x    sector: %x\n", s->lba, s->packet_transfer_size);
     
+    s->io_buffer_index = 0;
     if (s->drive_kind == IDE_CD) {
-        s->io_buffer_index = 0;
         s->io_buffer_size = s->packet_transfer_size;
+    } else {
+        s->io_buffer_size = s->nsector * 0x200;
     }
+
+    printf("\n\n------------ IDE transfer\n");
+    printf("buffer_size: %x   buffer_index: %x\n", s->io_buffer_size, s->io_buffer_index);
+    printf("lba: %x    size: %x\n", s->lba, s->io_buffer_size);    
+    printf("-------------------------\n");
     
     MACIO_DPRINTF("\n");
     m->dma_active = true;
