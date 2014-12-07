@@ -99,6 +99,45 @@ static void pmac_dma_read(BlockBackend *blk,
                               cb, io);
 }
 
+static void pmac_dma_write(BlockBackend *blk,
+                         int64_t sector_num, int nb_sectors,
+                         void (*cb)(void *opaque, int ret), void *opaque)
+{
+    DBDMA_io *io = opaque;
+    MACIOIDEState *m = io->opaque;
+    IDEState *s = idebus_active_if(&m->bus);
+    dma_addr_t dma_addr, dma_len;
+    void *mem;
+    int nsector, remainder;
+
+    dma_addr = io->addr;
+    dma_len = io->len;
+    mem = dma_memory_map(&address_space_memory, dma_addr, &dma_len, DMA_DIRECTION_TO_DEVICE);
+    
+    //nsector = ((io->len + 0x1ff) >> 9);
+    nsector = nb_sectors;
+    remainder = (nsector << 9) - io->len;
+    
+    qemu_iovec_destroy(&io->iov);
+    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);
+    qemu_iovec_add(&io->iov, mem, io->len);
+    MACIO_DPRINTF("--- main transfer: %x @ %" HWADDR_PRIx "\n", io->len, io->addr);
+    
+    if (remainder) {
+        MACIO_DPRINTF("--- remainder: %x\n", remainder);
+        qemu_iovec_add(&io->iov, &io->remainder + 0x200 - remainder, remainder);
+    }
+
+    s->io_buffer_size -= io->len;
+    s->io_buffer_index += io->len;
+
+    //io->addr += io->len;
+    io->len = 0;
+    
+    m->aiocb = blk_aio_writev(blk, sector_num, &io->iov, nsector,
+                              cb, io);
+}
+
 static void pmac_ide_atapi_transfer_cb(void *opaque, int ret)
 {
     DBDMA_io *io = opaque;
@@ -412,8 +451,8 @@ static void pmac_ide_transfer_cb(void *opaque, int ret)
                               pmac_ide_transfer_cb, io);
 	break;
     case IDE_DMA_WRITE:
-	MACIO_DPRINTF("PANIC!!! It's a WRITE!\n");
-	exit(1);
+        pmac_dma_write(s->blk, sector_num, nsector,
+                              pmac_ide_transfer_cb, io);
 	break;
     default:
 	MACIO_DPRINTF("WTF?\n");
