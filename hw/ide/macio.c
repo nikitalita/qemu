@@ -31,7 +31,7 @@
 #include <hw/ide/internal.h>
 
 /* debug MACIO */
- #define DEBUG_MACIO
+#define DEBUG_MACIO
 
 #ifdef DEBUG_MACIO
 static const int debug_macio = 1;
@@ -70,23 +70,61 @@ static void pmac_dma_read(BlockBackend *blk,
     dma_addr_t dma_addr, dma_len;
     void *mem;
     int nsector, remainder;
+    
+    qemu_iovec_destroy(&io->iov);
+    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);    
+    
+    if (io->remainder_len > 0) {
+        /* Return remainder of request */
+	int transfer = MIN(io->remainder_len, io->len);
+	
+	MACIO_DPRINTF("--- DMA read pop     - bounce addr: %p addr: %" HWADDR_PRIx " remainder_len: %x\n", 
+	       &io->remainder + (0x200 - transfer), io->addr, io->remainder_len);
+	
+	cpu_physical_memory_write(io->addr, 
+				  &io->remainder + (0x200 - transfer), 
+				  transfer);
+	io->remainder_len -= transfer;
+	io->len -= transfer;
+	io->addr += transfer;
+	
+	s->io_buffer_index += transfer;
+	s->io_buffer_size -= transfer;
+	
+	if (io->len == 0) {
+	    MACIO_DPRINTF("--- finished all read processing; go and finish\n");
+	    cb(opaque, 0);
+	    return;
+	}
+    }
+    
+    if (s->drive_kind == IDE_CD) {
+	    sector_num = (int64_t)(s->lba << 2) + (s->io_buffer_index >> 9);
+    } else {
+	    sector_num = ide_get_sector(s) + (s->io_buffer_index >> 9);
+    }
+    
+    nsector = ((io->len + 0x1ff) >> 9);
+    //nsector = nb_sectors;
+    remainder = (nsector << 9) - io->len;
+    
+    MACIO_DPRINTF("--- DMA read transfer - addr: %" HWADDR_PRIx " len: %x\n", io->addr, io->len);
 
     dma_addr = io->addr;
     dma_len = io->len;
     mem = dma_memory_map(&address_space_memory, dma_addr, &dma_len, DMA_DIRECTION_FROM_DEVICE);
     
-    //nsector = ((io->len + 0x1ff) >> 9);
-    nsector = nb_sectors;
-    remainder = (nsector << 9) - io->len;
-    
-    qemu_iovec_destroy(&io->iov);
-    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);
-    qemu_iovec_add(&io->iov, mem, io->len);
-    MACIO_DPRINTF("--- main transfer: %x @ %" HWADDR_PRIx "\n", io->len, io->addr);
-    
-    if (remainder) {
-        MACIO_DPRINTF("--- remainder: %x\n", remainder);
-        qemu_iovec_add(&io->iov, &io->remainder + 0x200 - remainder, remainder);
+    if (!remainder) {
+	MACIO_DPRINTF("--- DMA read aligned - addr: %" HWADDR_PRIx " len: %x\n", io->addr, io->len);
+        qemu_iovec_add(&io->iov, mem, io->len);
+    } else {
+        MACIO_DPRINTF("--- DMA read unaligned - addr: %" HWADDR_PRIx " len: %x\n", io->addr, io->len);
+	qemu_iovec_add(&io->iov, mem, io->len);
+	
+	MACIO_DPRINTF("--- DMA read push    - bounce addr: %p remainder_len: %x\n", &io->remainder + 0x200 - remainder, remainder);
+	qemu_iovec_add(&io->iov, &io->remainder + 0x200 - remainder, remainder);
+		
+	io->remainder_len = remainder;
     }
 
     s->io_buffer_size -= io->len;
@@ -94,6 +132,8 @@ static void pmac_dma_read(BlockBackend *blk,
 
     //io->addr += io->len;
     io->len = 0;
+
+    MACIO_DPRINTF("--- Block transfer   - sector_num: %lx  nsector: %x\n", sector_num, nsector);
     
     m->aiocb = blk_aio_readv(blk, sector_num, &io->iov, nsector,
                               cb, io);
@@ -109,23 +149,71 @@ static void pmac_dma_write(BlockBackend *blk,
     dma_addr_t dma_addr, dma_len;
     void *mem;
     int nsector, remainder;
-
-    dma_addr = io->addr;
-    dma_len = io->len;
-    mem = dma_memory_map(&address_space_memory, dma_addr, &dma_len, DMA_DIRECTION_TO_DEVICE);
+    int extra = 0;
+        
+    qemu_iovec_destroy(&io->iov);
+    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);    
     
-    //nsector = ((io->len + 0x1ff) >> 9);
-    nsector = nb_sectors;
+    if (io->remainder_len > 0) {
+        /* Return remainder of request */
+	int transfer = MIN(io->remainder_len, io->len);
+	
+	//printf("--- processing write remainder %x\n", transfer);
+	cpu_physical_memory_read(io->addr, &io->remainder + (0x200 - transfer), transfer);
+		
+	io->remainder_len -= transfer;
+	io->len -= transfer;
+	io->addr += transfer;
+	
+	s->io_buffer_index += transfer;
+	s->io_buffer_size -= transfer;
+	
+	if (io->remainder_len != 0) {
+            /* Still waiting for remainder */
+	    return;
+	}
+	
+	printf("--> prepending bounce buffer with size 0x200\n");
+		
+	/* Sector transfer complete - prepend to request */
+	qemu_iovec_add(&io->iov, &io->remainder, 0x200);
+        extra = 1;
+    }    
+    
+    if (s->drive_kind == IDE_CD) {
+	    sector_num = (int64_t)(s->lba << 2) + (s->io_buffer_index >> 9);
+    } else {
+	    sector_num = ide_get_sector(s) + (s->io_buffer_index >> 9);
+    }
+    
+    nsector = ((io->len + 0x1ff) >> 9);
+    
     remainder = (nsector << 9) - io->len;
     
-    qemu_iovec_destroy(&io->iov);
-    qemu_iovec_init(&io->iov, io->len / MACIO_PAGE_SIZE + 1);
-    qemu_iovec_add(&io->iov, mem, io->len);
-    MACIO_DPRINTF("--- main transfer: %x @ %" HWADDR_PRIx "\n", io->len, io->addr);
+    MACIO_DPRINTF("--- DMA write transfer - addr: %" HWADDR_PRIx " len: %x\n", io->addr, io->len);
     
-    if (remainder) {
-        MACIO_DPRINTF("--- remainder: %x\n", remainder);
-        qemu_iovec_add(&io->iov, &io->remainder + 0x200 - remainder, remainder);
+    dma_addr = io->addr;
+    dma_len = io->len;
+    mem = dma_memory_map(&address_space_memory, dma_addr, &dma_len, DMA_DIRECTION_TO_DEVICE);    
+    
+    if (!remainder) {
+	MACIO_DPRINTF("--- DMA write aligned - addr: %" HWADDR_PRIx " len: %x\n", io->addr, io->len);
+        qemu_iovec_add(&io->iov, mem, io->len);
+    } else {
+        //printf("--- %s write remainder: %x\n", __func__, remainder);
+	
+	/* Write up to last complete sector */
+	nsector--;
+	
+        MACIO_DPRINTF("--- DMA write unaligned - addr: %" HWADDR_PRIx " len: %x\n", io->addr, (nsector << 9));
+	qemu_iovec_add(&io->iov, mem, (nsector << 9));
+	
+	MACIO_DPRINTF("--- DMA write read    - bounce addr: %p remainder_len: %x\n", &io->remainder, (0x200 - remainder));
+	cpu_physical_memory_read(io->addr + (nsector << 9), &io->remainder, (0x200 - remainder));
+	
+	//printf(".. qiov size is %lx, nsector is %x\n", io->iov.size, nsector);
+	
+        io->remainder_len = remainder;
     }
 
     s->io_buffer_size -= io->len;
@@ -134,7 +222,7 @@ static void pmac_dma_write(BlockBackend *blk,
     //io->addr += io->len;
     io->len = 0;
     
-    m->aiocb = blk_aio_writev(blk, sector_num, &io->iov, nsector,
+    m->aiocb = blk_aio_writev(blk, sector_num - extra, &io->iov, nsector + extra,
                               cb, io);
 }
 
@@ -146,7 +234,7 @@ static void pmac_ide_atapi_transfer_cb(void *opaque, int ret)
     int64_t sector_num;
     int nsector, remainder;
     
-    MACIO_DPRINTF("s is %p\n", s);
+    MACIO_DPRINTF("\ns is %p\n", s);
     MACIO_DPRINTF("io_buffer_index: %x\n", s->io_buffer_index);
     MACIO_DPRINTF("io_buffer_size: %x   packet_transfer_size: %x\n", s->io_buffer_size, s->packet_transfer_size);
     MACIO_DPRINTF("lba: %x\n", s->lba);
@@ -687,10 +775,26 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
         s->io_buffer_size = s->nsector * 0x200;
     }
 
-    printf("\n\n------------ IDE transfer\n");
-    printf("buffer_size: %x   buffer_index: %x\n", s->io_buffer_size, s->io_buffer_index);
-    printf("lba: %x    size: %x\n", s->lba, s->io_buffer_size);    
-    printf("-------------------------\n");
+    MACIO_DPRINTF("\n\n------------ IDE transfer\n");
+    MACIO_DPRINTF("buffer_size: %x   buffer_index: %x\n", s->io_buffer_size, s->io_buffer_index);
+    MACIO_DPRINTF("lba: %x    size: %x\n", s->lba, s->io_buffer_size);    
+    MACIO_DPRINTF("-------------------------\n");
+    
+    DBDMAState *dbdma = m->dbdma;
+    DBDMA_io *io;
+    int i;
+    
+    for (i = 0; i < DBDMA_CHANNELS; i++) {
+        io = &dbdma->channels[i].io;
+	
+	//printf("xx  channel %d  ", i);
+	if (io->opaque == m) {
+		//printf("match!\n");
+		io->remainder_len = 0;
+	} else {
+		//printf("no match!\n");
+	}	
+    }    
     
     MACIO_DPRINTF("\n");
     m->dma_active = true;

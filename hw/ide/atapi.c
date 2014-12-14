@@ -375,7 +375,7 @@ static void ide_atapi_cmd_read_dma(IDEState *s, int lba, int nb_sectors,
     block_acct_start(blk_get_stats(s->blk), &s->acct, s->packet_transfer_size,
                      BLOCK_ACCT_READ);
 
-    printf("\nxxxxxxx New DMA read!   lba: %d   size: %d\n", s->lba, s->packet_transfer_size);
+    //printf("\nxxxxxxx New DMA read!   lba: %d   size: %d\n", s->lba, s->packet_transfer_size);
     
     /* XXX: check if BUSY_STAT should be set */
     s->status = READY_STAT | SEEK_STAT | DRQ_STAT | BUSY_STAT;
