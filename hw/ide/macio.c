@@ -31,7 +31,7 @@
 #include <hw/ide/internal.h>
 
 /* debug MACIO */
-// #define DEBUG_MACIO
+//#define DEBUG_MACIO
 
 #ifdef DEBUG_MACIO
 static const int debug_macio = 1;
@@ -264,6 +264,7 @@ static void pmac_ide_transfer_cb(void *opaque, int ret)
         s->status = READY_STAT | SEEK_STAT;
         ide_set_irq(s->bus);
         m->dma_active = false;
+        io->remainder_len = 0;
     }
 
     if (io->len == 0) {
@@ -368,7 +369,7 @@ static void pmac_ide_transfer(DBDMA_io *io)
     if (s->drive_kind == IDE_CD) {
 
         /* Handle non-block ATAPI DMA transfers */
-        if (s->lba == -1) {
+        if (s->lba == -1 && 0 == 1) {
             s->io_buffer_size = MIN(io->len, s->packet_transfer_size);
             block_acct_start(blk_get_stats(s->blk), &s->acct, s->io_buffer_size,
                              BLOCK_ACCT_READ);
@@ -537,6 +538,7 @@ static const VMStateDescription vmstate_pmac = {
     .fields = (VMStateField[]) {
         VMSTATE_IDE_BUS(bus, MACIOIDEState),
         VMSTATE_IDE_DRIVES(bus.ifs, MACIOIDEState),
+        VMSTATE_BOOL(dma_active, MACIOIDEState),
         VMSTATE_END_OF_LIST()
     }
 };

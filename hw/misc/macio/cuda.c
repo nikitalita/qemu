@@ -622,6 +622,14 @@ static bool cuda_timer_exist(void *opaque, int version_id)
     return s->timer != NULL;
 }
 
+static int vmstate_cuda_post_load(void *opaque, int version_id)
+{
+    CUDAState *s = opaque;
+    
+    cuda_update_irq(s);
+    return 0;
+}
+
 static const VMStateDescription vmstate_cuda_timer = {
     .name = "cuda_timer",
     .version_id = 0,
@@ -640,6 +648,7 @@ static const VMStateDescription vmstate_cuda = {
     .name = "cuda",
     .version_id = 2,
     .minimum_version_id = 2,
+    .post_load = vmstate_cuda_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(a, CUDAState),
         VMSTATE_UINT8(b, CUDAState),

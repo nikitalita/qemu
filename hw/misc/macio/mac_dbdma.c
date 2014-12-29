@@ -526,6 +526,9 @@ static void DBDMA_run(DBDMAState *s)
 
     for (channel = 0; channel < DBDMA_CHANNELS; channel++) {
         DBDMA_channel *ch = &s->channels[channel];
+	if (channel == 0x16 || channel == 0x1a) {
+		//printf("FOO!\n");
+	}
         uint32_t status = ch->regs[DBDMA_STATUS];
         if (!ch->io.processing && (status & RUN) && (status & ACTIVE)) {
             channel_run(ch);
@@ -608,27 +611,8 @@ dbdma_control_write(DBDMA_channel *ch)
     }
 }
 
-static void dbdma_write(void *opaque, hwaddr addr,
-                        uint64_t value, unsigned size)
+static void dbdma_reg_write(DBDMA_channel *ch, int reg, uint64_t value)
 {
-    int channel = addr >> DBDMA_CHANNEL_SHIFT;
-    DBDMAState *s = opaque;
-    DBDMA_channel *ch = &s->channels[channel];
-    int reg = (addr - (channel << DBDMA_CHANNEL_SHIFT)) >> 2;
-
-    DBDMA_DPRINTF("writel 0x" TARGET_FMT_plx " <= 0x%08"PRIx64"\n",
-                  addr, value);
-    DBDMA_DPRINTF("channel 0x%x reg 0x%x\n",
-                  (uint32_t)addr >> DBDMA_CHANNEL_SHIFT, reg);
-
-    /* cmdptr cannot be modified if channel is ACTIVE */
-
-    if (reg == DBDMA_CMDPTR_LO && (ch->regs[DBDMA_STATUS] & ACTIVE)) {
-        return;
-    }
-
-    ch->regs[reg] = value;
-
     switch(reg) {
     case DBDMA_CONTROL:
         dbdma_control_write(ch);
@@ -657,6 +641,30 @@ static void dbdma_write(void *opaque, hwaddr addr,
         /* unused */
         break;
     }
+}
+
+static void dbdma_write(void *opaque, hwaddr addr,
+                        uint64_t value, unsigned size)
+{
+    int channel = addr >> DBDMA_CHANNEL_SHIFT;
+    DBDMAState *s = opaque;
+    DBDMA_channel *ch = &s->channels[channel];
+    int reg = (addr - (channel << DBDMA_CHANNEL_SHIFT)) >> 2;
+
+    DBDMA_DPRINTF("writel 0x" TARGET_FMT_plx " <= 0x%08"PRIx64"\n",
+                  addr, value);
+    DBDMA_DPRINTF("channel 0x%x reg 0x%x\n",
+                  (uint32_t)addr >> DBDMA_CHANNEL_SHIFT, reg);
+
+    /* cmdptr cannot be modified if channel is ACTIVE */
+
+    if (reg == DBDMA_CMDPTR_LO && (ch->regs[DBDMA_STATUS] & ACTIVE)) {
+        return;
+    }
+
+    ch->regs[reg] = value;
+
+    dbdma_reg_write(ch, reg, value);
 }
 
 static uint64_t dbdma_read(void *opaque, hwaddr addr,
@@ -715,12 +723,68 @@ static const MemoryRegionOps dbdma_ops = {
     },
 };
 
+static int vmstate_dbdma_post_load(void *opaque, int version_id)
+{
+    DBDMAState *s = opaque;
+    DBDMA_channel *ch;
+    int i, j;
+    
+    for (i = 0; i < DBDMA_CHANNELS; i++) {
+	for (j = 0; j < DBDMA_REGS; j++) {		       
+		//    dbdma_cmdptr_load(&s->channels[i]);
+		ch = &s->channels[i];
+		dbdma_reg_write(ch, j, ch->regs[j]);
+	}
+    }
+        
+    DBDMA_kick(s);
+    
+    return 0;
+}
+
+static const VMStateDescription vmstate_dbdma_io = {
+    .name = "dbdma_io",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(addr, struct DBDMA_io),
+        VMSTATE_INT32(len, struct DBDMA_io),
+        VMSTATE_INT32(is_last, struct DBDMA_io),
+        VMSTATE_INT32(is_dma_out, struct DBDMA_io),
+        VMSTATE_BOOL(processing, struct DBDMA_io),
+        VMSTATE_UINT8_ARRAY(remainder, struct DBDMA_io, 0x200),
+        VMSTATE_INT32(remainder_len, struct DBDMA_io),
+        VMSTATE_BOOL(finish_remain_read, struct DBDMA_io),
+        VMSTATE_UINT64(finish_addr, struct DBDMA_io),
+        VMSTATE_UINT64(finish_len, struct DBDMA_io),
+        VMSTATE_INT32(requests, struct DBDMA_io),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_dbdma_cmd = {
+    .name = "dbdma_cmd",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT16(req_count, dbdma_cmd),
+        VMSTATE_UINT16(command, dbdma_cmd),
+        VMSTATE_UINT32(phy_addr, dbdma_cmd),
+        VMSTATE_UINT32(cmd_dep, dbdma_cmd),
+        VMSTATE_UINT16(res_count, dbdma_cmd),
+        VMSTATE_UINT16(xfer_status, dbdma_cmd),        
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_dbdma_channel = {
     .name = "dbdma_channel",
     .version_id = 0,
     .minimum_version_id = 0,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, struct DBDMA_channel, DBDMA_REGS),
+        VMSTATE_STRUCT(io, struct DBDMA_channel, 0, vmstate_dbdma_io, struct DBDMA_io),
+        VMSTATE_STRUCT(current, struct DBDMA_channel, 0, vmstate_dbdma_cmd, dbdma_cmd), 
         VMSTATE_END_OF_LIST()
     }
 };
@@ -729,8 +793,9 @@ static const VMStateDescription vmstate_dbdma = {
     .name = "dbdma",
     .version_id = 2,
     .minimum_version_id = 2,
+    .post_load = vmstate_dbdma_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_STRUCT_ARRAY(channels, DBDMAState, DBDMA_CHANNELS, 1,
+        VMSTATE_STRUCT_ARRAY(channels, DBDMAState, DBDMA_CHANNELS, 0,
                              vmstate_dbdma_channel, DBDMA_channel),
         VMSTATE_END_OF_LIST()
     }
@@ -755,8 +820,8 @@ void* DBDMA_init (MemoryRegion **dbdma_mem)
     for (i = 0; i < DBDMA_CHANNELS; i++) {
         DBDMA_io *io = &s->channels[i].io;
         qemu_iovec_init(&io->iov, 1);
-    }
-
+    }    
+    
     memory_region_init_io(&s->mem, NULL, &dbdma_ops, s, "dbdma", 0x1000);
     *dbdma_mem = &s->mem;
     vmstate_register(NULL, -1, &vmstate_dbdma, s);
