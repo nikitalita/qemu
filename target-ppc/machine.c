@@ -530,6 +530,8 @@ const VMStateDescription vmstate_ppc_cpu = {
 
         /* Internal state */
         VMSTATE_UINTTL(env.hflags_nmsr, PowerPCCPU),
+        VMSTATE_UINT32(env.pending_interrupts, PowerPCCPU),
+        VMSTATE_UINT32(env.irq_input_state, PowerPCCPU),
         /* FIXME: access_type? */
 
         /* Sanity checking */
