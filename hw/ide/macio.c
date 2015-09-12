@@ -291,6 +291,7 @@ done:
     } else {
         block_acct_done(blk_get_stats(s->blk), &s->acct);
     }
+    ide_set_inactive(s, false);
     s->bus->dma->aiocb = NULL;
     io->dma_end(opaque);
 
@@ -358,6 +359,7 @@ done:
             block_acct_done(blk_get_stats(s->blk), &s->acct);
         }
     }
+    ide_set_inactive(s, false);
     s->bus->dma->aiocb = NULL;
     io->dma_end(opaque);
 }
