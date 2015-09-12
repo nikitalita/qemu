@@ -532,6 +532,11 @@ static void macio_ide_reset(DeviceState *dev)
     ide_bus_reset(&d->bus);
 }
 
+
+static void ide_nop(IDEDMA *dma)
+{
+}
+
 static int ide_nop_int(IDEDMA *dma, int x)
 {
     return 0;
@@ -568,6 +573,7 @@ static const IDEDMAOps dbdma_ops = {
     .start_dma      = ide_dbdma_start,
     .prepare_buf    = ide_nop_int32,
     .rw_buf         = ide_nop_int,
+    .restart        = ide_nop
 };
 
 static void macio_ide_realizefn(DeviceState *dev, Error **errp)
