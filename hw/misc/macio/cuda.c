@@ -687,11 +687,21 @@ static bool cuda_timer_exist(void *opaque, int version_id)
 
     return s->timer != NULL;
 }
-
+/*
+static int cuda_post_load(void *opaque, int version_id)
+{
+    CUDAState *s = opaque;
+    
+    cuda_update(s);
+    
+    return 0;
+}
+*/
 static const VMStateDescription vmstate_cuda_timer = {
     .name = "cuda_timer",
     .version_id = 0,
     .minimum_version_id = 0,
+    //.post_load = cuda_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT16(latch, CUDATimer),
         VMSTATE_UINT16(counter_value, CUDATimer),
@@ -709,10 +719,12 @@ static const VMStateDescription vmstate_cuda = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(a, CUDAState),
         VMSTATE_UINT8(b, CUDAState),
+        VMSTATE_UINT8(last_b, CUDAState),
         VMSTATE_UINT8(dira, CUDAState),
         VMSTATE_UINT8(dirb, CUDAState),
         VMSTATE_UINT8(sr, CUDAState),
         VMSTATE_UINT8(acr, CUDAState),
+        VMSTATE_UINT8(last_acr, CUDAState),
         VMSTATE_UINT8(pcr, CUDAState),
         VMSTATE_UINT8(ifr, CUDAState),
         VMSTATE_UINT8(ier, CUDAState),
@@ -724,6 +736,7 @@ static const VMStateDescription vmstate_cuda = {
         VMSTATE_BUFFER(data_in, CUDAState),
         VMSTATE_BUFFER(data_out, CUDAState),
         VMSTATE_UINT32(tick_offset, CUDAState),
+        VMSTATE_UINT64(frequency, CUDAState),
         VMSTATE_STRUCT_ARRAY(timers, CUDAState, 2, 1,
                              vmstate_cuda_timer, CUDATimer),
         VMSTATE_TIMER_PTR(adb_poll_timer, CUDAState),
