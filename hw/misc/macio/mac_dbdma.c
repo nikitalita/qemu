@@ -728,6 +728,21 @@ static const VMStateDescription vmstate_dbdma_io = {
     }
 };
 
+static const VMStateDescription vmstate_dbdma_cmd = {
+    .name = "dbdma_cmd",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT16(req_count, dbdma_cmd),
+        VMSTATE_UINT16(command, dbdma_cmd),
+        VMSTATE_UINT32(phy_addr, dbdma_cmd),
+        VMSTATE_UINT32(cmd_dep, dbdma_cmd),
+        VMSTATE_UINT16(res_count, dbdma_cmd),
+        VMSTATE_UINT16(xfer_status, dbdma_cmd),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static const VMStateDescription vmstate_dbdma_channel = {
     .name = "dbdma_channel",
     .version_id = 1,
@@ -735,6 +750,7 @@ static const VMStateDescription vmstate_dbdma_channel = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, struct DBDMA_channel, DBDMA_REGS),
         VMSTATE_STRUCT(io, struct DBDMA_channel, 0, vmstate_dbdma_io, DBDMA_io),
+        VMSTATE_STRUCT(current, struct DBDMA_channel, 0, vmstate_dbdma_cmd, dbdma_cmd),
         VMSTATE_END_OF_LIST()
     }
 };

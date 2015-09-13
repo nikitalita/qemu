@@ -161,6 +161,8 @@ static int cpu_post_load(void *opaque, int version_id)
     int i;
     target_ulong msr;
 
+    fprintf(stderr, "CPUPPCState: %p\n", env);
+    
     /*
      * We always ignore the source PVR. The user or management
      * software has to take care of running QEMU in a compatible mode.
