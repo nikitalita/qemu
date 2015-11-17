@@ -146,7 +146,6 @@ typedef struct APBState {
     uint32_t obio_irq_map[32];
     qemu_irq *pbm_irqs;
     qemu_irq *ivec_irqs;
-    unsigned int irq_request;
     uint32_t reset_control;
     unsigned int nr_resets;
 } APBState;
@@ -155,24 +154,18 @@ static inline void pbm_set_request(APBState *s, unsigned int irq_num)
 {
     APB_DPRINTF("%s: request irq %d\n", __func__, irq_num);
 
-    s->irq_request = irq_num;
     qemu_set_irq(s->ivec_irqs[irq_num], 1);
 }
 
 static inline void pbm_check_irqs(APBState *s)
 {
-
     unsigned int i;
 
-    /* Previous request is not acknowledged, resubmit */
-    if (s->irq_request != NO_IRQ_REQUEST) {
-        pbm_set_request(s, s->irq_request);
-        return;
-    }
     /* no request pending */
     if (s->pci_irq_in == 0ULL) {
         return;
     }
+
     for (i = 0; i < 32; i++) {
         if (s->pci_irq_in & (1ULL << i)) {
             if (s->pci_irq_map[i >> 2] & PBM_PCI_IMR_ENABLED) {
@@ -195,7 +188,6 @@ static inline void pbm_clear_request(APBState *s, unsigned int irq_num)
 {
     APB_DPRINTF("%s: clear request irq %d\n", __func__, irq_num);
     qemu_set_irq(s->ivec_irqs[irq_num], 0);
-    s->irq_request = NO_IRQ_REQUEST;
 }
 
 static AddressSpace *pbm_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
@@ -434,9 +426,6 @@ static void apb_config_writel (void *opaque, hwaddr addr,
             unsigned int ino = (addr & 0x3f) >> 3;
             s->pci_irq_map[ino] &= PBM_PCI_IMR_MASK;
             s->pci_irq_map[ino] |= val & ~PBM_PCI_IMR_MASK;
-            if ((s->irq_request == ino) && !(val & ~PBM_PCI_IMR_MASK)) {
-                pbm_clear_request(s, ino);
-            }
             pbm_check_irqs(s);
         }
         break;
@@ -445,29 +434,23 @@ static void apb_config_writel (void *opaque, hwaddr addr,
             unsigned int ino = ((addr & 0xff) >> 3);
             s->obio_irq_map[ino] &= PBM_PCI_IMR_MASK;
             s->obio_irq_map[ino] |= val & ~PBM_PCI_IMR_MASK;
-            if ((s->irq_request == (ino | 0x20))
-                 && !(val & ~PBM_PCI_IMR_MASK)) {
-                pbm_clear_request(s, ino | 0x20);
-            }
             pbm_check_irqs(s);
         }
         break;
     case 0x1400 ... 0x14ff: /* PCI interrupt clear */
         if (addr & 4) {
-            unsigned int ino = (addr & 0xff) >> 5;
-            if ((s->irq_request / 4)  == ino) {
-                pbm_clear_request(s, s->irq_request);
-                pbm_check_irqs(s);
-            }
+            unsigned int ino = (addr & 0xff) >> 3;
+            s->pci_irq_in &= ~(1ULL << ino);
+            pbm_clear_request(s, ino);
+            pbm_check_irqs(s);
         }
         break;
     case 0x1800 ... 0x1860: /* OBIO interrupt clear */
         if (addr & 4) {
             unsigned int ino = ((addr & 0xff) >> 3) | 0x20;
-            if (s->irq_request == ino) {
-                pbm_clear_request(s, ino);
-                pbm_check_irqs(s);
-            }
+            s->pci_irq_in &= ~(1ULL << ino);
+            pbm_clear_request(s, ino);
+            pbm_check_irqs(s);
         }
         break;
     case 0x2000 ... 0x202f: /* PCI control */
@@ -614,20 +597,15 @@ static void pci_apb_set_irq(void *opaque, int irq_num, int level)
             if (s->pci_irq_map[irq_num >> 2] & PBM_PCI_IMR_ENABLED) {
                 pbm_set_request(s, irq_num);
             }
-        } else {
-            s->pci_irq_in &= ~(1ULL << irq_num);
         }
     } else {
         /* OBIO IRQ map onto the next 32 INO.  */
         if (level) {
             APB_DPRINTF("%s: set irq %d level %d\n", __func__, irq_num, level);
             s->pci_irq_in |= 1ULL << irq_num;
-            if ((s->irq_request == NO_IRQ_REQUEST)
-                && (s->obio_irq_map[irq_num - 32] & PBM_PCI_IMR_ENABLED)) {
+            if (s->obio_irq_map[irq_num - 32] & PBM_PCI_IMR_ENABLED) {
                 pbm_set_request(s, irq_num);
             }
-        } else {
-            s->pci_irq_in &= ~(1ULL << irq_num);
         }
     }
 }
@@ -739,7 +717,6 @@ static void pci_pbm_reset(DeviceState *d)
         s->obio_irq_map[i] &= PBM_PCI_IMR_MASK;
     }
 
-    s->irq_request = NO_IRQ_REQUEST;
     s->pci_irq_in = 0ULL;
 
     if (s->nr_resets++ == 0) {
@@ -770,7 +747,6 @@ static int pci_pbm_init_device(SysBusDevice *dev)
         s->obio_irq_map[i] = ((0x1f << 6) | 0x20) + i;
     }
     s->pbm_irqs = qemu_allocate_irqs(pci_apb_set_irq, s, MAX_IVEC);
-    s->irq_request = NO_IRQ_REQUEST;
     s->pci_irq_in = 0ULL;
 
     /* apb_config */
