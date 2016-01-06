@@ -970,7 +970,7 @@ struct CPUPPCState {
     /* Next instruction pointer */
     target_ulong nip;
 
-    int access_type; /* when a memory exception occurs, the access
+    uint8_t access_type; /* when a memory exception occurs, the access
                         type is stored here */
 
     CPU_COMMON

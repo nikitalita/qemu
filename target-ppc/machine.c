@@ -17,6 +17,7 @@ static int cpu_load_old(QEMUFile *f, void *opaque, int version_id)
     unsigned int i, j;
     target_ulong sdr1;
     uint32_t fpscr;
+    int32_t access_type;
     target_ulong xer;
 
     for (i = 0; i < 32; i++)
@@ -45,7 +46,8 @@ static int cpu_load_old(QEMUFile *f, void *opaque, int version_id)
     }
     qemu_get_be32s(f, &fpscr);
     env->fpscr = fpscr;
-    qemu_get_sbe32s(f, &env->access_type);
+    qemu_get_sbe32s(f, &access_type);
+    env->access_type = access_type;
 #if defined(TARGET_PPC64)
     qemu_get_betls(f, &env->spr[SPR_ASR]);
     qemu_get_sbe32s(f, &env->slb_nr);
@@ -559,7 +561,7 @@ const VMStateDescription vmstate_ppc_cpu = {
 
         /* Internal state */
         VMSTATE_UINTTL(env.hflags_nmsr, PowerPCCPU),
-        /* FIXME: access_type? */
+        VMSTATE_UINT8_V(env.access_type, PowerPCCPU, 6),
 
         /* Interrupt state */
         VMSTATE_UINT32_V(env.pending_interrupts, PowerPCCPU, 6),
