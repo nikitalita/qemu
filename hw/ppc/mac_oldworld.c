@@ -106,6 +106,7 @@ static void ppc_heathrow_init(MachineState *machine)
     DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     void *fw_cfg;
     uint64_t tbfreq;
+    PPCTimebase *tb;
 
     linux_boot = (kernel_filename != NULL);
 
@@ -123,6 +124,9 @@ static void ppc_heathrow_init(MachineState *machine)
         /* Set time-base frequency to 16.6 Mhz */
         cpu_ppc_tb_init(env,  TBFREQ);
         qemu_register_reset(ppc_heathrow_reset, cpu);
+
+        tb = g_malloc0(sizeof(PPCTimebase));
+        vmstate_register(NULL, -1, &vmstate_ppc_timebase, tb);
     }
 
     /* allocate RAM */

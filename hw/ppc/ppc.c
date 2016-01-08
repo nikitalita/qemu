@@ -903,8 +903,15 @@ static int timebase_post_load(void *opaque, int version_id)
     CPU_FOREACH(cpu) {
         PowerPCCPU *pcpu = POWERPC_CPU(cpu);
         pcpu->env.tb_env->tb_offset = tb_off_adj;
+
+        /* Adjust decrementer similarly */
+        pcpu->env.tb_env->decr_next = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                                      pcpu->env.spr[SPR_DECR] + tb_off_adj;
+        timer_mod(pcpu->env.tb_env->decr_timer, pcpu->env.tb_env->decr_next);
     }
 
+    fprintf(stderr, "tb post_load\n");
+    
     return 0;
 }
 
