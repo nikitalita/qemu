@@ -342,9 +342,8 @@ static void load_word(DBDMA_channel *ch, int key, uint32_t addr,
                      uint16_t len)
 {
     dbdma_cmd *current = &ch->current;
-    uint32_t val;
 
-    DBDMA_DPRINTF("load_word\n");
+    DBDMA_DPRINTF("load_word %d bytes, addr=%08x\n", len, addr);
 
     /* only implements KEY_SYSTEM */
 
@@ -354,14 +353,7 @@ static void load_word(DBDMA_channel *ch, int key, uint32_t addr,
         return;
     }
 
-    dma_memory_read(&address_space_memory, addr, &val, len);
-
-    if (len == 2)
-        val = (val << 16) | (current->cmd_dep & 0x0000ffff);
-    else if (len == 1)
-        val = (val << 24) | (current->cmd_dep & 0x00ffffff);
-
-    current->cmd_dep = val;
+    dma_memory_read(&address_space_memory, addr, &current->cmd_dep, len);
 
     if (conditional_wait(ch))
         goto wait;
@@ -381,9 +373,9 @@ static void store_word(DBDMA_channel *ch, int key, uint32_t addr,
                       uint16_t len)
 {
     dbdma_cmd *current = &ch->current;
-    uint32_t val;
 
-    DBDMA_DPRINTF("store_word\n");
+    DBDMA_DPRINTF("store_word %d bytes, addr=%08x pa=%x\n",
+                  len, addr, le32_to_cpu(current->cmd_dep));
 
     /* only implements KEY_SYSTEM */
 
@@ -393,13 +385,7 @@ static void store_word(DBDMA_channel *ch, int key, uint32_t addr,
         return;
     }
 
-    val = current->cmd_dep;
-    if (len == 2)
-        val >>= 16;
-    else if (len == 1)
-        val >>= 24;
-
-    dma_memory_write(&address_space_memory, addr, &val, len);
+    dma_memory_write(&address_space_memory, addr, &current->cmd_dep, len);
 
     if (conditional_wait(ch))
         goto wait;
