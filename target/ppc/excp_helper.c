@@ -1658,6 +1658,18 @@ static void powerpc_excp(PowerPCCPU *cpu, int excp)
 void ppc_cpu_do_interrupt(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
+    CPUPPCState *env = &cpu->env;
+
+    /* MOL OSI */
+    if (cs->exception_index == POWERPC_EXCP_SYSCALL &&
+        env->mol_osi_enabled &&
+        env->gpr[3] == 0x113724fa &&
+        env->gpr[4] == 0x77810f9b) {
+        ppc_mol_osi_call(cpu);
+        cs->exception_index = POWERPC_EXCP_NONE;
+        env->nip = env->nip + 4;
+        return;
+    }
 
     powerpc_excp(cpu, cs->exception_index);
 }

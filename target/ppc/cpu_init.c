@@ -6648,9 +6648,26 @@ void cpu_ppc_set_vhyp(PowerPCCPU *cpu, PPCVirtualHypervisor *vhyp)
     env->msr_mask &= ~MSR_HVB;
 }
 
+/* MOL OSI */
+void cpu_ppc_enable_mol_osi(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+
+    env->mol_osi_enabled = true;
+}
 #endif /* !defined(CONFIG_USER_ONLY) */
 
 #endif /* defined(TARGET_PPC64) */
+
+#if !defined(CONFIG_USER_ONLY)
+/* MOL OSI */
+void cpu_ppc_enable_mol_osi(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+
+    env->mol_osi_enabled = true;
+}
+#endif /* !defined(CONFIG_USER_ONLY) */
 
 /*****************************************************************************/
 /* Generic CPU instantiation routine                                         */

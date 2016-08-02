@@ -1244,6 +1244,11 @@ struct CPUPPCState {
      * running cycles.
      */
     uint64_t pmu_base_time;
+
+#if !defined(CONFIG_USER_ONLY)
+    /* Enable MOL OSI calls */
+    bool mol_osi_enabled;
+#endif
 };
 
 #define SET_FIT_PERIOD(a_, b_, c_, d_)          \
@@ -1474,6 +1479,12 @@ int ppc_compat_max_vthreads(PowerPCCPU *cpu);
 void ppc_compat_add_property(Object *obj, const char *name,
                              uint32_t *compat_pvr, const char *basedesc);
 #endif /* defined(TARGET_PPC64) */
+
+/* MOL OSI */
+#if !defined(CONFIG_USER_ONLY)
+void cpu_ppc_enable_mol_osi(PowerPCCPU *cpu);
+void ppc_mol_osi_call(PowerPCCPU *cpu);
+#endif
 
 typedef CPUPPCState CPUArchState;
 typedef PowerPCCPU ArchCPU;

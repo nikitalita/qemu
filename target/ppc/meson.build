@@ -42,6 +42,7 @@ ppc_softmmu_ss.add(files(
 ))
 ppc_softmmu_ss.add(when: 'CONFIG_TCG', if_true: files(
   'mmu_helper.c',
+  'mol-osi.c'
 ), if_false: files(
   'tcg-stub.c',
 ))

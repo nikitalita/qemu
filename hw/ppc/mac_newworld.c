@@ -65,6 +65,7 @@
 #include "hw/loader.h"
 #include "hw/fw-path-provider.h"
 #include "elf.h"
+#include "target/ppc/cpu.h"
 #include "qemu/error-report.h"
 #include "sysemu/kvm.h"
 #include "sysemu/reset.h"
@@ -102,6 +103,9 @@ static void ppc_core99_reset(void *opaque)
     cpu_reset(CPU(cpu));
     /* 970 CPUs want to get their initial IP as part of their boot protocol */
     cpu->env.nip = PROM_BASE + 0x100;
+
+    /* Enable MOL OSI */
+    cpu_ppc_enable_mol_osi(cpu);
 }
 
 /* PowerPC Mac99 hardware initialisation */
