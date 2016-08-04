@@ -50,6 +50,8 @@
 #define TYPE_MACIO_IDE "macio-ide"
 #define MACIO_IDE(obj) OBJECT_CHECK(MACIOIDEState, (obj), TYPE_MACIO_IDE)
 
+void MacIOSetGPIO(DeviceState *dev, uint32_t gpio, bool state);
+
 typedef struct MACIOIDEState {
     /*< private >*/
     SysBusDevice parent_obj;
