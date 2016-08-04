@@ -64,10 +64,13 @@
 #define NEWWORLD_IDE0_DMA_IRQ  0x2
 #define NEWWORLD_IDE1_IRQ      0xe
 #define NEWWORLD_IDE1_DMA_IRQ  0x3
+#define NEWWORLD_EXTING_GPIO1  0x2f
 
 /* MacIO */
 #define TYPE_MACIO_IDE "macio-ide"
 #define MACIO_IDE(obj) OBJECT_CHECK(MACIOIDEState, (obj), TYPE_MACIO_IDE)
+
+void MacIOSetGPIO(DeviceState *dev, uint32_t gpio, bool state);
 
 typedef struct MACIOIDEState {
     /*< private >*/

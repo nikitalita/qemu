@@ -41,9 +41,11 @@ typedef struct MacIOState {
 
     MemoryRegion bar;
     CUDAState cuda;
+    DeviceState *pmu;
     DBDMAState dbdma;
     ESCCState escc;
     uint64_t frequency;
+    bool has_pmu;
 } MacIOState;
 
 #define TYPE_OLDWORLD_MACIO "macio-oldworld"
@@ -71,7 +73,10 @@ typedef struct NewWorldMacIOState {
     /*< public >*/
 
     OpenPICState *pic;
+    qemu_irq gpio1_irq;
     MACIOIDEState ide[2];
+    uint8_t gpio_levels[8];
+    uint8_t gpio_regs[36]; /* XXX Check count */
 } NewWorldMacIOState;
 
 #endif /* MACIO_H */
