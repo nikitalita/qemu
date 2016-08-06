@@ -24,6 +24,7 @@
 #include "qemu/osdep.h"
 #include "hw/input/adb.h"
 #include "adb-internal.h"
+#include "trace.h"
 
 /* error codes */
 #define ADB_RET_NOTPRESENT (-2)
@@ -33,7 +34,8 @@ static void adb_device_reset(ADBDevice *d)
     qdev_reset_all(DEVICE(d));
 }
 
-int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
+static int __adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf,
+                         int len, bool autopoll)
 {
     ADBDevice *d;
     int devaddr, cmd, i;
@@ -47,6 +49,11 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
         return 0;
     }
     devaddr = buf[0] >> 4;
+    if (!autopoll) {
+        trace_adb_request(devaddr, len, buf[0],
+                          len > 1 ? buf[1] : 0,
+                          len > 2 ? buf[2] : 0);
+    }
     for(i = 0; i < s->nb_devices; i++) {
         d = s->devices[i];
         if (d->devaddr == devaddr) {
@@ -54,7 +61,15 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
             return adc->devreq(d, obuf, buf, len);
         }
     }
+    if (!autopoll) {
+        trace_adb_request_unknown();
+    }
     return ADB_RET_NOTPRESENT;
+}
+
+int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
+{
+    return __adb_request(s, obuf, buf, len, false);
 }
 
 /* XXX: move that to cuda ? */
@@ -71,7 +86,7 @@ int adb_poll(ADBBusState *s, uint8_t *obuf, uint16_t poll_mask)
         d = s->devices[s->poll_index];
         if ((1 << d->devaddr) & poll_mask) {
             buf[0] = ADB_READREG | (d->devaddr << 4);
-            olen = adb_request(s, obuf + 1, buf, 1);
+            olen = __adb_request(s, obuf + 1, buf, 1, true);
             /* if there is data, we poll again the same device */
             if (olen > 0) {
                 obuf[0] = buf[0];
