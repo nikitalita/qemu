@@ -74,6 +74,7 @@ typedef struct NewWorldMacIOState {
 
     OpenPICState *pic;
     qemu_irq gpio1_irq;
+    qemu_irq pswitch_irq;
     MACIOIDEState ide[2];
     uint8_t gpio_levels[8];
     uint8_t gpio_regs[36]; /* XXX Check count */
