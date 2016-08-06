@@ -30,7 +30,7 @@
 #include "sysemu/sysemu.h"
 
 /* debug ADB */
-//#define DEBUG_ADB
+#undef DEBUG_ADB
 
 #ifdef DEBUG_ADB
 #define ADB_DPRINTF(fmt, ...) \
@@ -70,13 +70,15 @@ static void adb_device_reset(ADBDevice *d)
     qdev_reset_all(DEVICE(d));
 }
 
-int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
+static int __adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf,
+                         int len, bool autopoll)
 {
     ADBDevice *d;
     int devaddr, cmd, i;
 
     cmd = buf[0] & 0xf;
     if (cmd == ADB_BUSRESET) {
+        ADB_DPRINTF("Resetting bus !\n");
         for(i = 0; i < s->nb_devices; i++) {
             d = s->devices[i];
             adb_device_reset(d);
@@ -84,6 +86,13 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
         return 0;
     }
     devaddr = buf[0] >> 4;
+    if (!autopoll) {
+        ADB_DPRINTF("Req for dev 0x%02x r(%d): %02x %02x %02x...\n",
+                    devaddr, len,
+                    buf[0],
+                    len > 1 ? buf[1] : 0,
+                    len > 2 ? buf[2] : 0);
+    }
     for(i = 0; i < s->nb_devices; i++) {
         d = s->devices[i];
         if (d->devaddr == devaddr) {
@@ -91,7 +100,15 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
             return adc->devreq(d, obuf, buf, len);
         }
     }
+    if (!autopoll) {
+        ADB_DPRINTF("Unknown device !\n");
+    }
     return ADB_RET_NOTPRESENT;
+}
+
+int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
+{
+    return __adb_request(s, obuf, buf, len, false);
 }
 
 /* XXX: move that to cuda ? */
@@ -108,7 +125,7 @@ int adb_poll(ADBBusState *s, uint8_t *obuf, uint16_t poll_mask)
         d = s->devices[s->poll_index];
         if ((1 << d->devaddr) & poll_mask) {
             buf[0] = ADB_READREG | (d->devaddr << 4);
-            olen = adb_request(s, obuf + 1, buf, 1);
+            olen = __adb_request(s, obuf + 1, buf, 1, true);
             /* if there is data, we poll again the same device */
             if (olen > 0) {
                 obuf[0] = buf[0];
@@ -373,6 +390,7 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
     if ((buf[0] & 0x0f) == ADB_FLUSH) {
         /* flush keyboard fifo */
         s->wptr = s->rptr = s->count = 0;
+        ADB_DPRINTF("KBD: Flush\n");
         return 0;
     }
 
@@ -393,17 +411,13 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
             case ADB_CMD_CHANGE_ID_AND_ACT:
             case ADB_CMD_CHANGE_ID_AND_ENABLE:
                 d->devaddr = buf[1] & 0xf;
+                ADB_DPRINTF("KBD: Change addr(1) to 0x%x\n", d->devaddr);
                 break;
             default:
                 d->devaddr = buf[1] & 0xf;
-                /* we support handlers:
-                 * 1: Apple Standard Keyboard
-                 * 2: Apple Extended Keyboard (LShift = RShift)
-                 * 3: Apple Extended Keyboard (LShift != RShift)
-                 */
-                if (buf[2] == 1 || buf[2] == 2 || buf[2] == 3) {
-                    d->handler = buf[2];
-                }
+                d->handler = buf[2];
+                ADB_DPRINTF("KBD: Change addr & handler to 0x%x,0x%x\n",
+                            d->devaddr, d->handler);
                 break;
             }
         }
@@ -615,6 +629,7 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
         s->dx = 0;
         s->dy = 0;
         s->dz = 0;
+        ADB_DPRINTF("MOUSE: Flush\n");
         return 0;
     }
 
@@ -635,23 +650,13 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
             case ADB_CMD_CHANGE_ID_AND_ACT:
             case ADB_CMD_CHANGE_ID_AND_ENABLE:
                 d->devaddr = buf[1] & 0xf;
+                ADB_DPRINTF("MOUSE: Change addr(1) to 0x%x\n", d->devaddr);
                 break;
             default:
                 d->devaddr = buf[1] & 0xf;
-                /* we support handlers:
-                 * 0x01: Classic Apple Mouse Protocol / 100 cpi operations
-                 * 0x02: Classic Apple Mouse Protocol / 200 cpi operations
-                 * we don't support handlers (at least):
-                 * 0x03: Mouse systems A3 trackball
-                 * 0x04: Extended Apple Mouse Protocol
-                 * 0x2f: Microspeed mouse
-                 * 0x42: Macally
-                 * 0x5f: Microspeed mouse
-                 * 0x66: Microspeed mouse
-                 */
-                if (buf[2] == 1 || buf[2] == 2) {
-                    d->handler = buf[2];
-                }
+                //d->handler = buf[2];
+                ADB_DPRINTF("MOUSE: Change addr & handler to 0x%x,0x%x\n",
+                            d->devaddr, d->handler);
                 break;
             }
         }
@@ -669,8 +674,10 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
             olen = 2;
             break;
         }
-        ADB_DPRINTF("read reg %d obuf[0] 0x%2.2x obuf[1] 0x%2.2x\n", reg,
-                    obuf[0], obuf[1]);
+        if (reg != 0) {
+            ADB_DPRINTF("MOUSE: read reg %d : 0x%2.2x 0x%2.2x\n", reg,
+                        obuf[0], obuf[1]);
+        }
         break;
     }
     return olen;
