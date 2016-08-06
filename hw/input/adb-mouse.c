@@ -143,21 +143,7 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
                 break;
             default:
                 d->devaddr = buf[1] & 0xf;
-                /* we support handlers:
-                 * 0x01: Classic Apple Mouse Protocol / 100 cpi operations
-                 * 0x02: Classic Apple Mouse Protocol / 200 cpi operations
-                 * we don't support handlers (at least):
-                 * 0x03: Mouse systems A3 trackball
-                 * 0x04: Extended Apple Mouse Protocol
-                 * 0x2f: Microspeed mouse
-                 * 0x42: Macally
-                 * 0x5f: Microspeed mouse
-                 * 0x66: Microspeed mouse
-                 */
-                if (buf[2] == 1 || buf[2] == 2) {
-                    d->handler = buf[2];
-                }
-
+                //d->handler = buf[2];
                 trace_adb_mouse_request_change_addr_and_handler(d->devaddr,
                                                                 d->handler);
                 break;
@@ -177,7 +163,9 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
             olen = 2;
             break;
         }
-        trace_adb_mouse_readreg(reg, obuf[0], obuf[1]);
+        if (reg != 0) {
+            trace_adb_mouse_readreg(reg, obuf[0], obuf[1]);
+        }
         break;
     }
     return olen;
