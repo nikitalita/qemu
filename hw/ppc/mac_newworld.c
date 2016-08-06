@@ -377,6 +377,7 @@ static void ppc_newworld_init(MachineState *machine, bool is_mini)
     qdev_connect_gpio_out(dev, 5, pic[0x0e]); /* IDE */
     qdev_connect_gpio_out(dev, 6, pic[0x03]); /* IDE DMA */
     qdev_connect_gpio_out(dev, 7, pic[0x2f]); /* EXTING_GPIO1 (PMU) */
+    qdev_connect_gpio_out(dev, 8, pic[0x37]); /* EXTING_GPIO9 (NMI) */
     qdev_prop_set_uint64(dev, "frequency", tbfreq);
     object_property_set_link(OBJECT(macio), OBJECT(pic_dev), "pic",
                              &error_abort);

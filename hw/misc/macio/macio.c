@@ -32,6 +32,7 @@
 #include "hw/char/escc.h"
 #include "hw/misc/macio/macio.h"
 #include "hw/intc/heathrow_pic.h"
+#include "hw/nmi.h"
 
 /* Note: this code is strongly inspirated from the corresponding code
  * in PearPC */
@@ -328,13 +329,28 @@ void MacIOSetGPIO(DeviceState *dev, uint32_t gpio, bool state)
     }
     // XXX Update the levels summary
     // XXX Update the interrupts
-    if (gpio == 9) {
+    if (gpio == 1) {
         if (state) {
+            printf("Raising GPIO1 !\n");
             qemu_irq_raise(ns->irqs[ns->gpio1_irq]);
         } else {
             qemu_irq_lower(ns->irqs[ns->gpio1_irq]);
         }
     }
+    if (gpio == 9) {
+        if (state) {
+            printf("Raising GPIO9 !\n");
+            qemu_irq_raise(ns->irqs[ns->pswitch_irq]);
+        } else {
+            qemu_irq_lower(ns->irqs[ns->pswitch_irq]);
+        }
+    }
+}
+
+static void macio_nmi(NMIState *n, int cpu_index, Error **errp)
+{
+    MacIOSetGPIO(DEVICE(n), 9, true);
+    MacIOSetGPIO(DEVICE(n), 9, false);
 }
 
 static uint64_t gpio_read(void *opaque, hwaddr addr, unsigned size)
@@ -420,6 +436,8 @@ static void macio_newworld_realize(PCIDevice *d, Error **errp)
     gpio_memory = g_new(MemoryRegion, 1);
     memory_region_init_io(gpio_memory, OBJECT(s), &gpio_ops, ns, "gpio", 0x30);
     memory_region_add_subregion(&s->bar, 0x50, gpio_memory);
+
+    ns->pswitch_irq = cur_irq++;
 }
 
 static void macio_newworld_init(Object *obj)
@@ -496,10 +514,12 @@ static void macio_newworld_class_init(ObjectClass *oc, void *data)
 {
     PCIDeviceClass *pdc = PCI_DEVICE_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    NMIClass *nc = NMI_CLASS(oc);
 
     pdc->realize = macio_newworld_realize;
     pdc->device_id = PCI_DEVICE_ID_APPLE_UNI_N_KEYL;
     dc->vmsd = &vmstate_macio_newworld;
+    nc->nmi_monitor_handler = macio_nmi;
 }
 
 static Property macio_properties[] = {
@@ -533,6 +553,10 @@ static const TypeInfo macio_newworld_type_info = {
     .instance_size = sizeof(NewWorldMacIOState),
     .instance_init = macio_newworld_init,
     .class_init    = macio_newworld_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { TYPE_NMI },
+        { }
+    },
 };
 
 static const TypeInfo macio_type_info = {
