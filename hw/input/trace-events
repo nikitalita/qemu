@@ -1,5 +1,9 @@
 # See docs/devel/tracing.txt for syntax documentation.
 
+# hw/input/adb.c
+adb_request(int devaddr, int len, uint8_t buf0, uint8_t buf1, uint8_t buf2) "Req for dev 0x%02x r(%d): %02x %02x %02x..."
+adb_request_unknown(void) "Unknown device !"
+
 # hw/input/adb-kbd.c
 adb_kbd_no_key(void) "Ignoring NO_KEY"
 adb_kbd_writereg(int reg, uint8_t val) "reg %d val 0x%2.2x"

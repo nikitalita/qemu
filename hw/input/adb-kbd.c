@@ -262,15 +262,7 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
                 break;
             default:
                 d->devaddr = buf[1] & 0xf;
-                /* we support handlers:
-                 * 1: Apple Standard Keyboard
-                 * 2: Apple Extended Keyboard (LShift = RShift)
-                 * 3: Apple Extended Keyboard (LShift != RShift)
-                 */
-                if (buf[2] == 1 || buf[2] == 2 || buf[2] == 3) {
-                    d->handler = buf[2];
-                }
-
+                d->handler = buf[2];
                 trace_adb_kbd_request_change_addr_and_handler(d->devaddr,
                                                               d->handler);
                 break;
