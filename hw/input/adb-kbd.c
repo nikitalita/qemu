@@ -261,10 +261,10 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
                 trace_adb_kbd_request_change_addr(d->devaddr);
                 break;
             default:
-                d->devaddr = buf[1] & 0xf;
-                d->handler = buf[2];
-                trace_adb_kbd_request_change_addr_and_handler(d->devaddr,
-                                                              d->handler);
+                /* Don't change address on normal writes, only support
+                 * handler 1 (Apple Standard Keyboard) for the time
+                 * being. So we just ignore writes to register 3.
+                 */
                 break;
             }
         }
