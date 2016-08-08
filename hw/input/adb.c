@@ -52,7 +52,8 @@ static int __adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf,
     if (!autopoll) {
         trace_adb_request(devaddr, len, buf[0],
                           len > 1 ? buf[1] : 0,
-                          len > 2 ? buf[2] : 0);
+                          len > 2 ? buf[2] : 0,
+                          len > 3 ? buf[3] : 0);
     }
     for(i = 0; i < s->nb_devices; i++) {
         d = s->devices[i];
