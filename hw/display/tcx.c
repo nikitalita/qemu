@@ -98,6 +98,12 @@ static void tcx_set_dirty(TCXState *s)
     memory_region_set_dirty(&s->vram_mem, 0, MAXX * MAXY);
 }
 
+static inline int tcx_check_dirty(TCXState *s, ram_addr_t page)
+{
+    return memory_region_get_dirty(&s->vram_mem, page, TARGET_PAGE_SIZE,
+                                   DIRTY_MEMORY_VGA);
+}
+
 static inline int tcx24_check_dirty(TCXState *s, ram_addr_t page,
                                     ram_addr_t page24, ram_addr_t cpage)
 {
@@ -359,8 +365,7 @@ static void tcx_update_display(void *opaque)
 
     memory_region_sync_dirty_bitmap(&ts->vram_mem);
     for (y = 0; y < ts->height; page += TARGET_PAGE_SIZE) {
-        if (memory_region_get_dirty(&ts->vram_mem, page, TARGET_PAGE_SIZE,
-                                    DIRTY_MEMORY_VGA)) {
+        if (tcx_check_dirty(ts, page)) {
             if (y_start < 0)
                 y_start = y;
             if (page < page_min)
