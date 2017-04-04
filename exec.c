@@ -1071,7 +1071,7 @@ DirtyBitmapSnapshot *cpu_physical_memory_snapshot_and_clear_dirty
      (ram_addr_t start, ram_addr_t length, unsigned client)
 {
     DirtyMemoryBlocks *blocks;
-    unsigned long align = 1 << (TARGET_PAGE_BITS + BITS_PER_LEVEL);
+    unsigned long align = 1UL << (TARGET_PAGE_BITS + BITS_PER_LEVEL);
     ram_addr_t first = QEMU_ALIGN_DOWN(start, align);
     ram_addr_t last  = QEMU_ALIGN_UP(start + length, align);
     DirtyBitmapSnapshot *snap;
