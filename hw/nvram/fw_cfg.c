@@ -908,7 +908,16 @@ static void fw_cfg_machine_ready(struct Notifier *n, void *data)
     qemu_register_reset(fw_cfg_machine_reset, s);
 }
 
+static void fw_cfg_machine_attach(FWCfgState *s)
+{
+    MachineState *machine = MACHINE(qdev_get_machine());
 
+    assert(!object_resolve_path(FW_CFG_PATH, NULL));
+    object_property_add_child(OBJECT(machine), FW_CFG_NAME, OBJECT(s), NULL);
+
+    s->machine_ready.notify = fw_cfg_machine_ready;
+    qemu_add_machine_init_done_notifier(&s->machine_ready);
+}
 
 static void fw_cfg_init1(DeviceState *dev)
 {
@@ -916,9 +925,7 @@ static void fw_cfg_init1(DeviceState *dev)
     MachineState *machine = MACHINE(qdev_get_machine());
     uint32_t version = FW_CFG_VERSION;
 
-    assert(!object_resolve_path(FW_CFG_PATH, NULL));
-
-    object_property_add_child(OBJECT(machine), FW_CFG_NAME, OBJECT(s), NULL);
+    fw_cfg_machine_attach(s);
 
     fw_cfg_add_bytes(s, FW_CFG_SIGNATURE, (char *)"QEMU", 4);
     fw_cfg_add_bytes(s, FW_CFG_UUID, &qemu_uuid, 16);
@@ -932,9 +939,6 @@ static void fw_cfg_init1(DeviceState *dev)
     }
 
     fw_cfg_add_i32(s, FW_CFG_ID, version);
-
-    s->machine_ready.notify = fw_cfg_machine_ready;
-    qemu_add_machine_init_done_notifier(&s->machine_ready);
 }
 
 FWCfgState *fw_cfg_init_io_dma(uint32_t iobase, uint32_t dma_iobase,
