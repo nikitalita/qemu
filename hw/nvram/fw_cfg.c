@@ -97,6 +97,9 @@ struct FWCfgState {
 
 typedef struct FWCfgClass {
     SysBusDeviceClass parent_klass;
+    
+    /* < public > */
+    void (*machine_attach)(FWCfgState *s);
 } FWCfgClass;
 
 struct FWCfgIoState {
@@ -934,8 +937,6 @@ static void fw_cfg_init1(DeviceState *dev)
     MachineState *machine = MACHINE(qdev_get_machine());
     uint32_t version = FW_CFG_VERSION;
 
-    fw_cfg_machine_attach(s);
-
     fw_cfg_add_bytes(s, FW_CFG_SIGNATURE, (char *)"QEMU", 4);
     fw_cfg_add_bytes(s, FW_CFG_UUID, &qemu_uuid, 16);
     fw_cfg_add_i16(s, FW_CFG_NOGRAPHIC, (uint16_t)!machine->enable_graphics);
@@ -955,6 +956,7 @@ FWCfgState *fw_cfg_init_io_dma(uint32_t iobase, uint32_t dma_iobase,
 {
     DeviceState *dev;
     SysBusDevice *sbd;
+    FWCfgClass *fc;
     FWCfgIoState *ios;
     FWCfgState *s;
     bool dma_requested = dma_iobase && dma_as;
@@ -979,6 +981,9 @@ FWCfgState *fw_cfg_init_io_dma(uint32_t iobase, uint32_t dma_iobase,
         sysbus_add_io(sbd, dma_iobase, &s->dma_iomem);
     }
 
+    fc = FW_CFG_GET_CLASS(s);
+    fc->machine_attach(s);
+
     return s;
 }
 
@@ -993,6 +998,7 @@ FWCfgState *fw_cfg_init_mem_wide(hwaddr ctl_addr,
 {
     DeviceState *dev;
     SysBusDevice *sbd;
+    FWCfgClass *fc;
     FWCfgState *s;
     bool dma_requested = dma_addr && dma_as;
 
@@ -1016,6 +1022,9 @@ FWCfgState *fw_cfg_init_mem_wide(hwaddr ctl_addr,
         sysbus_mmio_map(sbd, 2, dma_addr);
     }
 
+    fc = FW_CFG_GET_CLASS(s);
+    fc->machine_attach(s);
+
     return s;
 }
 
@@ -1035,7 +1044,9 @@ FWCfgState *fw_cfg_find(void)
 static void fw_cfg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    FWCfgClass *fc = FW_CFG_CLASS(klass);
 
+    fc->machine_attach = fw_cfg_machine_attach;
     dc->reset = fw_cfg_reset;
     dc->vmsd = &vmstate_fw_cfg;
 }
