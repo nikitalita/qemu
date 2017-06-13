@@ -40,19 +40,6 @@
 #define FW_CFG_NAME "fw_cfg"
 #define FW_CFG_PATH "/machine/" FW_CFG_NAME
 
-#define TYPE_FW_CFG     "fw_cfg"
-#define TYPE_FW_CFG_IO  "fw_cfg_io"
-#define TYPE_FW_CFG_MEM "fw_cfg_mem"
-
-#define FW_CFG(obj)     OBJECT_CHECK(FWCfgState,    (obj), TYPE_FW_CFG)
-#define FW_CFG_IO(obj)  OBJECT_CHECK(FWCfgIoState,  (obj), TYPE_FW_CFG_IO)
-#define FW_CFG_MEM(obj) OBJECT_CHECK(FWCfgMemState, (obj), TYPE_FW_CFG_MEM)
-
-#define FW_CFG_CLASS(klass) \
-    OBJECT_CLASS_CHECK(FWCfgClass, (klass), TYPE_FW_CFG)
-#define FW_CFG_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(FWCfgClass, (obj), TYPE_FW_CFG)
-
 /* FW_CFG_VERSION bits */
 #define FW_CFG_VERSION      0x01
 #define FW_CFG_VERSION_DMA  0x02
@@ -65,63 +52,6 @@
 #define FW_CFG_DMA_CTL_WRITE   0x10
 
 #define FW_CFG_DMA_SIGNATURE 0x51454d5520434647ULL /* "QEMU CFG" */
-
-typedef struct FWCfgEntry {
-    uint32_t len;
-    bool allow_write;
-    uint8_t *data;
-    void *callback_opaque;
-    FWCfgReadCallback read_callback;
-} FWCfgEntry;
-
-struct FWCfgState {
-    /*< private >*/
-    SysBusDevice parent_obj;
-    /*< public >*/
-
-    uint16_t file_slots;
-    FWCfgEntry *entries[2];
-    int *entry_order;
-    FWCfgFiles *files;
-    uint16_t cur_entry;
-    uint32_t cur_offset;
-    Notifier machine_ready;
-
-    int fw_cfg_order_override;
-
-    bool dma_enabled;
-    dma_addr_t dma_addr;
-    AddressSpace *dma_as;
-    MemoryRegion dma_iomem;
-};
-
-typedef struct FWCfgClass {
-    SysBusDeviceClass parent_klass;
-    
-    /* < protected > */
-    void (*add_default_entries)(FWCfgState *s);
-    /* < public > */
-    void (*machine_attach)(FWCfgState *s);
-} FWCfgClass;
-
-struct FWCfgIoState {
-    /*< private >*/
-    FWCfgState parent_obj;
-    /*< public >*/
-
-    MemoryRegion comb_iomem;
-    uint32_t iobase, dma_iobase;
-};
-
-struct FWCfgMemState {
-    /*< private >*/
-    FWCfgState parent_obj;
-    /*< public >*/
-
-    MemoryRegion ctl_iomem, data_iomem;
-    uint32_t data_width;
-    MemoryRegionOps wide_data_ops;
-};
 
 #define JPG_FILE 0
 #define BMP_FILE 1
