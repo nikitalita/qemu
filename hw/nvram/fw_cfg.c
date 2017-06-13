@@ -98,6 +98,8 @@ struct FWCfgState {
 typedef struct FWCfgClass {
     SysBusDeviceClass parent_klass;
     
+    /* < protected > */
+    void (*add_default_entries)(FWCfgState *s);
     /* < public > */
     void (*machine_attach)(FWCfgState *s);
 } FWCfgClass;
@@ -931,9 +933,8 @@ static void fw_cfg_machine_attach(FWCfgState *s)
     qemu_add_machine_init_done_notifier(&s->machine_ready);
 }
 
-static void fw_cfg_init1(DeviceState *dev)
+static void fw_cfg_add_default_entries(FWCfgState *s)
 {
-    FWCfgState *s = FW_CFG(dev);
     MachineState *machine = MACHINE(qdev_get_machine());
     uint32_t version = FW_CFG_VERSION;
 
@@ -1046,6 +1047,7 @@ static void fw_cfg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     FWCfgClass *fc = FW_CFG_CLASS(klass);
 
+    fc->add_default_entries = fw_cfg_add_default_entries;
     fc->machine_attach = fw_cfg_machine_attach;
     dc->reset = fw_cfg_reset;
     dc->vmsd = &vmstate_fw_cfg;
@@ -1096,6 +1098,7 @@ static Property fw_cfg_io_properties[] = {
 static void fw_cfg_io_realize(DeviceState *dev, Error **errp)
 {
     FWCfgIoState *s = FW_CFG_IO(dev);
+    FWCfgClass *fc = FW_CFG_GET_CLASS(dev);
     Error *local_err = NULL;
 
     fw_cfg_file_slots_allocate(FW_CFG(s), &local_err);
@@ -1116,7 +1119,7 @@ static void fw_cfg_io_realize(DeviceState *dev, Error **errp)
                               sizeof(dma_addr_t));
     }
 
-    fw_cfg_init1(dev);
+    fc->add_default_entries(FW_CFG(s));
 }
 
 static void fw_cfg_io_class_init(ObjectClass *klass, void *data)
@@ -1147,6 +1150,7 @@ static Property fw_cfg_mem_properties[] = {
 static void fw_cfg_mem_realize(DeviceState *dev, Error **errp)
 {
     FWCfgMemState *s = FW_CFG_MEM(dev);
+    FWCfgClass *fc = FW_CFG_GET_CLASS(dev);
     SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     const MemoryRegionOps *data_ops = &fw_cfg_data_mem_ops;
     Error *local_err = NULL;
@@ -1184,7 +1188,7 @@ static void fw_cfg_mem_realize(DeviceState *dev, Error **errp)
         sysbus_init_mmio(sbd, &FW_CFG(s)->dma_iomem);
     }
 
-    fw_cfg_init1(dev);
+    fc->add_default_entries(FW_CFG(s));
 }
 
 static void fw_cfg_mem_class_init(ObjectClass *klass, void *data)
