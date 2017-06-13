@@ -48,6 +48,11 @@
 #define FW_CFG_IO(obj)  OBJECT_CHECK(FWCfgIoState,  (obj), TYPE_FW_CFG_IO)
 #define FW_CFG_MEM(obj) OBJECT_CHECK(FWCfgMemState, (obj), TYPE_FW_CFG_MEM)
 
+#define FW_CFG_CLASS(klass) \
+    OBJECT_CLASS_CHECK(FWCfgClass, (klass), TYPE_FW_CFG)
+#define FW_CFG_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(FWCfgClass, (obj), TYPE_FW_CFG)
+
 /* FW_CFG_VERSION bits */
 #define FW_CFG_VERSION      0x01
 #define FW_CFG_VERSION_DMA  0x02
@@ -89,6 +94,10 @@ struct FWCfgState {
     AddressSpace *dma_as;
     MemoryRegion dma_iomem;
 };
+
+typedef struct FWCfgClass {
+    SysBusDeviceClass parent_klass;
+} FWCfgClass;
 
 struct FWCfgIoState {
     /*< private >*/
@@ -1036,6 +1045,7 @@ static const TypeInfo fw_cfg_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .abstract      = true,
     .instance_size = sizeof(FWCfgState),
+    .class_size    = sizeof(FWCfgClass),
     .class_init    = fw_cfg_class_init,
 };
 
