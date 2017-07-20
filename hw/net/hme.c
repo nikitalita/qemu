@@ -30,7 +30,7 @@
 #define HME_REG_SIZE       0x8000
 
 /* Change to 1 to enable debugging */
-#define DEBUG_HME 0
+#define DEBUG_HME 1
 
 #define DPRINTF(fmt, ...) do { \
     if (DEBUG_HME) { \
@@ -48,7 +48,12 @@ typedef struct HMEState {
     NICState *nic;
     NICConf conf;
 
-    MemoryRegion smbreg;
+    MemoryRegion hme;
+    MemoryRegion sebreg;
+    MemoryRegion etxreg;
+    MemoryRegion erxreg;
+    MemoryRegion macreg;
+    MemoryRegion mifreg;
 } HMEState;
 
 static Property hme_properties[] = {
@@ -56,24 +61,120 @@ static Property hme_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void hme_smb_write(void *opaque, hwaddr addr,
-                            uint64_t val, unsigned size)
+static void hme_seb_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned size)
 {
-    DPRINTF("hme_smb_write %" HWADDR_PRIx " %lx", addr, val);
+    DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
 }
 
-static uint64_t hme_smb_read(void *opaque, hwaddr addr,
+static uint64_t hme_seb_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
-    DPRINTF("hme_smb_read %" HWADDR_PRIx, addr);
+    DPRINTF("hme_seb_read %" HWADDR_PRIx "\n", addr);
 
     return 0;
 }
 
-static const MemoryRegionOps hme_smb_ops = {
-    .read = hme_smb_read,
-    .write = hme_smb_write,
-    .endianness = DEVICE_BIG_ENDIAN,
+static const MemoryRegionOps hme_seb_ops = {
+    .read = hme_seb_read,
+    .write = hme_seb_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void hme_etx_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned size)
+{
+    DPRINTF("hme_etx_write %" HWADDR_PRIx " %lx\n", addr, val);
+}
+
+static uint64_t hme_etx_read(void *opaque, hwaddr addr,
+                             unsigned size)
+{
+    DPRINTF("hme_etx_read %" HWADDR_PRIx "\n", addr);
+
+    return 0;
+}
+
+static const MemoryRegionOps hme_etx_ops = {
+    .read = hme_etx_read,
+    .write = hme_etx_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void hme_erx_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned size)
+{
+    DPRINTF("hme_erx_write %" HWADDR_PRIx " %lx\n", addr, val);
+}
+
+static uint64_t hme_erx_read(void *opaque, hwaddr addr,
+                             unsigned size)
+{
+    DPRINTF("hme_erx_read %" HWADDR_PRIx "\n", addr);
+
+    return 0;
+}
+
+static const MemoryRegionOps hme_erx_ops = {
+    .read = hme_erx_read,
+    .write = hme_erx_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void hme_mac_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned size)
+{
+    DPRINTF("hme_mac_write %" HWADDR_PRIx " %lx\n", addr, val);
+}
+
+static uint64_t hme_mac_read(void *opaque, hwaddr addr,
+                             unsigned size)
+{
+    DPRINTF("hme_mac_read %" HWADDR_PRIx "\n", addr);
+
+    return 0;
+}
+
+static const MemoryRegionOps hme_mac_ops = {
+    .read = hme_mac_read,
+    .write = hme_mac_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void hme_mif_write(void *opaque, hwaddr addr,
+                          uint64_t val, unsigned size)
+{
+    DPRINTF("hme_mif_write %" HWADDR_PRIx " %lx\n", addr, val);
+}
+
+static uint64_t hme_mif_read(void *opaque, hwaddr addr,
+                             unsigned size)
+{
+    DPRINTF("hme_mif_read %" HWADDR_PRIx "\n", addr);
+
+    return 0;
+}
+
+static const MemoryRegionOps hme_mif_ops = {
+    .read = hme_mif_read,
+    .write = hme_mif_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
     .valid = {
         .min_access_size = 4,
         .max_access_size = 4,
@@ -88,10 +189,29 @@ static void hme_realize(PCIDevice *pci_dev, Error **errp)
     pci_conf = pci_dev->config;
     pci_conf[PCI_INTERRUPT_PIN] = 1;    /* interrupt pin A */
 
-    memory_region_init_io(&s->smbreg, OBJECT(pci_dev), &hme_smb_ops, 0,
-                          "hme-smb", HME_REG_SIZE);
-    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->smbreg);
+    memory_region_init(&s->hme, OBJECT(pci_dev), "hme", HME_REG_SIZE);
+    pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->hme);
     
+    memory_region_init_io(&s->sebreg, OBJECT(pci_dev), &hme_seb_ops, 0,
+                          "hme.seb", 0x2000);
+    memory_region_add_subregion(&s->hme, 0, &s->sebreg);
+
+    memory_region_init_io(&s->etxreg, OBJECT(pci_dev), &hme_etx_ops, 0,
+                          "hme.etx", 0x2000);
+    memory_region_add_subregion(&s->hme, 0x2000, &s->etxreg);
+
+    memory_region_init_io(&s->erxreg, OBJECT(pci_dev), &hme_erx_ops, 0,
+                          "hme.erx", 0x2000);
+    memory_region_add_subregion(&s->hme, 0x4000, &s->erxreg);
+
+    memory_region_init_io(&s->macreg, OBJECT(pci_dev), &hme_mac_ops, 0,
+                          "hme.mac", 0x1000);
+    memory_region_add_subregion(&s->hme, 0x6000, &s->macreg);
+
+    memory_region_init_io(&s->mifreg, OBJECT(pci_dev), &hme_mif_ops, 0,
+                          "hme.mif", 0x1000);
+    memory_region_add_subregion(&s->hme, 0x7000, &s->mifreg);
+
     return;
 }
 
