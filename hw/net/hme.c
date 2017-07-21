@@ -29,6 +29,23 @@
 
 #define HME_REG_SIZE       0x8000
 
+#define HME_SEB_REG_SIZE   0x2000
+
+#define HME_SEBI_RESET     0x0
+#define HME_SEB_RESET_ETX  0x1
+#define HME_SEB_RESET_ERX  0x2
+
+#define HME_ETX_REG_SIZE   0x2000
+#define HME_ERX_REG_SIZE   0x2000
+#define HME_MAC_REG_SIZE   0x1000
+
+#define HME_MIF_REG_SIZE   0x20
+
+#define HME_MIFI_CFG       0x10
+#define HME_MIF_CFG_MDI0   0x100
+#define HME_MIF_CFG_MDI1   0x200 
+
+
 /* Change to 1 to enable debugging */
 #define DEBUG_HME 1
 
@@ -54,6 +71,12 @@ typedef struct HMEState {
     MemoryRegion erxreg;
     MemoryRegion macreg;
     MemoryRegion mifreg;
+    
+    uint32_t sebregs[HME_SEB_REG_SIZE >> 2];
+    uint32_t etxregs[HME_ETX_REG_SIZE >> 2];
+    uint32_t erxregs[HME_ERX_REG_SIZE >> 2];
+    uint32_t macregs[HME_MAC_REG_SIZE >> 2];
+    uint32_t mifregs[HME_MIF_REG_SIZE >> 2];
 } HMEState;
 
 static Property hme_properties[] = {
@@ -61,18 +84,48 @@ static Property hme_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static void hme_reset_tx(HMEState *s)
+{
+    /* Indicate TX reset complete */
+    s->sebregs[HME_SEBI_RESET] &= ~HME_SEB_RESET_ETX;
+}
+
+static void hme_reset_rx(HMEState *s)
+{
+    /* Indicate RX reset complete */
+    s->sebregs[HME_SEBI_RESET] &= ~HME_SEB_RESET_ERX;
+}
+
 static void hme_seb_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
+
+    switch (addr) {
+    case HME_SEBI_RESET:
+        if (val & HME_SEB_RESET_ETX) {
+            hme_reset_tx(s);
+        }
+        if (val & HME_SEB_RESET_ERX) {
+            hme_reset_rx(s);
+        }
+        val = s->sebregs[HME_SEBI_RESET >> 2];
+        break;
+    }
+
+    s->sebregs[addr >> 2] = val; 
 }
 
 static uint64_t hme_seb_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_seb_read %" HWADDR_PRIx "\n", addr);
 
-    return 0;
+    return s->sebregs[addr >> 2];
 }
 
 static const MemoryRegionOps hme_seb_ops = {
@@ -88,15 +141,21 @@ static const MemoryRegionOps hme_seb_ops = {
 static void hme_etx_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_etx_write %" HWADDR_PRIx " %lx\n", addr, val);
+    
+    s->etxregs[addr >> 2] = val;
 }
 
 static uint64_t hme_etx_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_etx_read %" HWADDR_PRIx "\n", addr);
 
-    return 0;
+    return s->etxregs[addr >> 2];
 }
 
 static const MemoryRegionOps hme_etx_ops = {
@@ -112,15 +171,21 @@ static const MemoryRegionOps hme_etx_ops = {
 static void hme_erx_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_erx_write %" HWADDR_PRIx " %lx\n", addr, val);
+    
+    s->erxregs[addr >> 2] = val;
 }
 
 static uint64_t hme_erx_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_erx_read %" HWADDR_PRIx "\n", addr);
 
-    return 0;
+    return s->erxregs[addr >> 2];    return 0;
 }
 
 static const MemoryRegionOps hme_erx_ops = {
@@ -136,15 +201,21 @@ static const MemoryRegionOps hme_erx_ops = {
 static void hme_mac_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_mac_write %" HWADDR_PRIx " %lx\n", addr, val);
+    
+    s->macregs[addr >> 2] = val;
 }
 
 static uint64_t hme_mac_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_mac_read %" HWADDR_PRIx "\n", addr);
 
-    return 0;
+    return s->macregs[addr >> 2];
 }
 
 static const MemoryRegionOps hme_mac_ops = {
@@ -160,15 +231,32 @@ static const MemoryRegionOps hme_mac_ops = {
 static void hme_mif_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
+    HMEState *s = HME(opaque);
+
     DPRINTF("hme_mif_write %" HWADDR_PRIx " %lx\n", addr, val);
+
+    switch (addr) {
+    case HME_MIFI_CFG:
+        /* Mask the read-only bits */
+        val &= ~(HME_MIF_CFG_MDI0 | HME_MIF_CFG_MDI1);
+        val |= s->mifregs[HME_MIFI_CFG >> 2] &
+               (HME_MIF_CFG_MDI0 | HME_MIF_CFG_MDI1);
+        break;
+    }
+
+    s->mifregs[addr >> 2] = val;
 }
 
 static uint64_t hme_mif_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
-    DPRINTF("hme_mif_read %" HWADDR_PRIx "\n", addr);
+    HMEState *s = HME(opaque);
+    uint64_t val;
 
-    return 0;
+    val = s->mifregs[addr >> 2];
+    
+    DPRINTF("hme_mif_read %" HWADDR_PRIx " %lx\n", addr, val);
+    return val;
 }
 
 static const MemoryRegionOps hme_mif_ops = {
@@ -192,24 +280,24 @@ static void hme_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init(&s->hme, OBJECT(pci_dev), "hme", HME_REG_SIZE);
     pci_register_bar(pci_dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->hme);
     
-    memory_region_init_io(&s->sebreg, OBJECT(pci_dev), &hme_seb_ops, 0,
-                          "hme.seb", 0x2000);
+    memory_region_init_io(&s->sebreg, OBJECT(pci_dev), &hme_seb_ops, s,
+                          "hme.seb", HME_SEB_REG_SIZE);
     memory_region_add_subregion(&s->hme, 0, &s->sebreg);
 
-    memory_region_init_io(&s->etxreg, OBJECT(pci_dev), &hme_etx_ops, 0,
-                          "hme.etx", 0x2000);
+    memory_region_init_io(&s->etxreg, OBJECT(pci_dev), &hme_etx_ops, s,
+                          "hme.etx", HME_ETX_REG_SIZE);
     memory_region_add_subregion(&s->hme, 0x2000, &s->etxreg);
 
-    memory_region_init_io(&s->erxreg, OBJECT(pci_dev), &hme_erx_ops, 0,
-                          "hme.erx", 0x2000);
+    memory_region_init_io(&s->erxreg, OBJECT(pci_dev), &hme_erx_ops, s,
+                          "hme.erx", HME_ERX_REG_SIZE);
     memory_region_add_subregion(&s->hme, 0x4000, &s->erxreg);
 
-    memory_region_init_io(&s->macreg, OBJECT(pci_dev), &hme_mac_ops, 0,
-                          "hme.mac", 0x1000);
+    memory_region_init_io(&s->macreg, OBJECT(pci_dev), &hme_mac_ops, s,
+                          "hme.mac", HME_MAC_REG_SIZE);
     memory_region_add_subregion(&s->hme, 0x6000, &s->macreg);
 
-    memory_region_init_io(&s->mifreg, OBJECT(pci_dev), &hme_mif_ops, 0,
-                          "hme.mif", 0x1000);
+    memory_region_init_io(&s->mifreg, OBJECT(pci_dev), &hme_mif_ops, s,
+                          "hme.mif", HME_MIF_REG_SIZE);
     memory_region_add_subregion(&s->hme, 0x7000, &s->mifreg);
 
     return;
@@ -229,6 +317,16 @@ static void hme_instance_init(Object *obj)
     return;
 }
 
+static void hme_reset(DeviceState *ds)
+{
+    HMEState *s = HME(ds);
+    
+    printf("hme reset!\n");
+
+    /* Configure internal transceiver */
+    s->mifregs[HME_MIFI_CFG >> 2] |= HME_MIF_CFG_MDI0;   
+}
+
 static void hme_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -240,6 +338,7 @@ static void hme_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_SUN_HME;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     //dc->vmsd = &vmstate_hme;
+    dc->reset = hme_reset;
     dc->props = hme_properties;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
 }
