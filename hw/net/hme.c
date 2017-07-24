@@ -258,9 +258,18 @@ static void hme_mii_write(HMEState *s, uint8_t reg, uint16_t data)
     
     switch (reg) {
     case MII_BMCR:
-        /* Autoclear reset bit */
         if (data & MII_BMCR_RESET) {
+            /* Autoclear reset bit, enable auto negotiation */
             data &= ~MII_BMCR_RESET;
+            data |= MII_BMCR_AUTOEN;
+        }        
+        if (data & MII_BMCR_ANRESTART) {
+            /* Autoclear auto negotiation restart */
+            data &= ~MII_BMCR_ANRESTART;
+
+            /* Indicate negotiation complete at 100Mbps FD */
+            s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
+            s->miiregs[MII_BMSR] |= (MII_BMSR_AN_COMP | MII_BMSR_LINK_ST);
         }
         break;
     }
@@ -406,9 +415,9 @@ static void hme_reset(DeviceState *ds)
     /* Configure internal transceiver */
     s->mifregs[HME_MIFI_CFG >> 2] |= HME_MIF_CFG_MDI0;
     
-    /* Allow 100Mbps FD */
-    s->miiregs[MII_BMSR] = MII_BMSR_AN_COMP | MII_BMSR_LINK_ST |
-                           MII_BMSR_100TX_FD;
+    /* Advetise 100Mbps FD */
+    s->miiregs[MII_ANAR] = MII_ANAR_TXFD;
+    s->miiregs[MII_BMSR] = MII_BMSR_100TX_FD;
 }
 
 static void hme_class_init(ObjectClass *klass, void *data)
