@@ -116,6 +116,7 @@ typedef struct HMEDesc {
 #define HME_DESC_SIZE          0x8
 
 #define HME_XD_OWN             0x80000000    /* ownership: 1=hw, 0=sw */
+#define HME_XD_OFL             0x40000000    /* buffer overflow (rx) */
 #define HME_XD_RXLENMSK        0x3fff0000    /* packet length mask (rx) */
 #define HME_XD_RXLENSHIFT      16
 
@@ -516,7 +517,13 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 
     addr = buffer + rxoffset;
     buffersize = (status & HME_XD_RXLENMSK) >> HME_XD_RXLENSHIFT;
-    len = MIN(buffersize, size);
+    
+    /* Detect receive overflow */
+    len = size;
+    if (size > buffersize) {
+        status |= HME_XD_OFL;
+        len = buffersize;
+    }
 
     DPRINTF("desc address " DMA_ADDR_FMT " - status %x with buffersize %d\n", addr, status, buffersize);
     pci_dma_write(d, addr, buf, len);
