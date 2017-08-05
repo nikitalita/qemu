@@ -41,11 +41,21 @@
 #define HME_SEBI_STAT                  0x108
 #define HME_SEB_STAT_RXTOHOST          0x10000    /* pkt moved from rx fifo->memory */
 #define HME_SEB_STAT_MIFIRQ            0x800000   /* mif needs attention */
+#define HME_SEB_STAT_HOSTTOTX          0x1000000  /* pkt moved from memory->tx fifo */
+#define HME_SEB_STAT_TXALL             0x2000000  /* all pkts in fifo transmitted */
 
 //#define HME_SEBI_IMASK                 0x104
 #define HME_SEBI_IMASK                 0x10c
 
 #define HME_ETX_REG_SIZE               0x2000
+
+#define HME_ETXI_PENDING               0x0     /* Pending/wakeup */
+
+#define HME_ETXI_RING                  0x8     /* Descriptor Ring pointer */
+#define HME_ETXI_RING_ADDR             0xffffff00
+#define HME_ETXI_RING_OFFSET           0xff
+
+#define HME_ETXI_RSIZE                 0x2c    /* Ring size */
 
 #define HME_ERX_REG_SIZE               0x2000
 
@@ -112,6 +122,9 @@ typedef struct HMEDesc {
     uint32_t buffer;
 } HMEDesc;
 
+/* Maximum size of buffer */
+#define HME_FIFO_SIZE          0x800
+
 /* Size of TX/RX descriptor */
 #define HME_DESC_SIZE          0x8
 
@@ -119,6 +132,7 @@ typedef struct HMEDesc {
 #define HME_XD_OFL             0x40000000    /* buffer overflow (rx) */
 #define HME_XD_RXLENMSK        0x3fff0000    /* packet length mask (rx) */
 #define HME_XD_RXLENSHIFT      16
+#define HME_XD_TXLENMSK        0x00001fff
 
 typedef struct HMEState {
     /*< private >*/
@@ -172,6 +186,13 @@ static void hme_update_irq(HMEState *s)
     DPRINTF("irq mif: %x\n", mif);
     
     /* Main SEB interrupt mask (include MIF status from above) */
+    uint32_t sebimask = s->sebregs[HME_SEBI_IMASK >> 2];
+    DPRINTF("sebimask: %x\n", sebimask);
+    uint32_t sebimask2 = ~(s->sebregs[HME_SEBI_IMASK >> 2]);
+    DPRINTF("sebimask2: %x\n", sebimask2);
+    uint32_t sebstat = s->sebregs[HME_SEBI_STAT >> 2];
+    DPRINTF("sebstat: %x\n", sebstat);
+    
     uint32_t sebmask = ~(s->sebregs[HME_SEBI_IMASK >> 2]) &
                        ~HME_SEB_STAT_MIFIRQ;
     uint32_t seb = s->sebregs[HME_SEBI_STAT >> 2] & sebmask;
@@ -181,7 +202,7 @@ static void hme_update_irq(HMEState *s)
     
     level = (seb ? 1 : 0);
     
-    DPRINTF("irq level: %x\n", level);
+    DPRINTF("irq level: %x  seb: %x\n", level, seb);
     pci_set_irq(d, level);
 }
 
@@ -190,7 +211,7 @@ static void hme_seb_write(void *opaque, hwaddr addr,
 {
     HMEState *s = HME(opaque);
 
-    //DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
+    DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
 
     switch (addr) {
     case HME_SEBI_RESET:
@@ -236,12 +257,22 @@ static const MemoryRegionOps hme_seb_ops = {
     },
 };
 
+static void hme_transmit(HMEState *s);
+
 static void hme_etx_write(void *opaque, hwaddr addr,
                           uint64_t val, unsigned size)
 {
     HMEState *s = HME(opaque);
 
     DPRINTF("hme_etx_write %" HWADDR_PRIx " %lx\n", addr, val);
+    
+    switch (addr) {
+    case HME_ETXI_PENDING:
+        if (val) {
+            hme_transmit(s);
+	}
+        break;
+    }
     
     s->etxregs[addr >> 2] = val;
 }
@@ -439,6 +470,95 @@ static const MemoryRegionOps hme_mif_ops = {
         .max_access_size = 4,
     },
 };
+
+static void hme_transmit_frame(HMEState *s, uint8_t *buf, int size)
+{
+    qemu_send_packet(qemu_get_queue(s->nic), buf, size);
+}
+
+static inline int hme_get_tx_ring_count(HMEState *s)
+{
+    return s->etxregs[HME_ETXI_RSIZE];
+}
+
+static inline int hme_get_tx_ring_nr(HMEState *s)
+{
+    return s->etxregs[HME_ETXI_RING >> 2] & HME_ETXI_RING_OFFSET;
+}
+
+static inline void hme_set_tx_ring_nr(HMEState *s, int i)
+{
+    uint32_t ring = s->etxregs[HME_ETXI_RING >> 2] & ~HME_ETXI_RING_OFFSET;
+    ring |= i & HME_ETXI_RING_OFFSET;
+
+    s->etxregs[HME_ETXI_RING >> 2] = ring;
+}
+
+static void hme_transmit(HMEState *s)
+{
+    PCIDevice *d = PCI_DEVICE(s);
+    dma_addr_t tb, addr;
+    uint32_t status, buffer;
+    int cr, len, count;
+    uint8_t xmit_buffer[HME_FIFO_SIZE];
+
+    DPRINTF("hme_transmit!\n");
+    
+    tb = s->etxregs[HME_ETXI_RING >> 2] & HME_ETXI_RING_ADDR;
+    cr = hme_get_tx_ring_nr(s);
+    
+    DPRINTF("tb " DMA_ADDR_FMT "  %d\n", tb, cr);
+    
+    pci_dma_read(d, tb + cr * HME_DESC_SIZE, &status, 4);
+    pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
+
+    DPRINTF("-- status: %" PRIx32 "\n", status);
+    
+    count = 0;
+    while ((status & HME_XD_OWN) && count <= hme_get_tx_ring_count(s)) {
+        /* Copy data into transmit buffer */
+        addr = buffer;
+        len = status & HME_XD_TXLENMSK;
+
+        // TODO: Tx overflow? In sebregs
+        if (len > HME_FIFO_SIZE) {
+            len = HME_FIFO_SIZE;
+        }
+
+        DPRINTF("  addr: " DMA_ADDR_FMT " len: %d\n", addr, len);
+        pci_dma_read(d, addr, &xmit_buffer, len);
+
+        hme_transmit_frame(s, xmit_buffer, len);
+
+        /* Return descriptor back to OS */
+        status &= ~HME_XD_OWN;
+        pci_dma_write(d, tb + cr * HME_DESC_SIZE, &status, 4);
+
+        cr++;
+        if (cr >= hme_get_tx_ring_count(s)) {
+            cr = 0;
+        }
+
+        hme_set_tx_ring_nr(s, cr);
+
+        /* Indicate TX complete */
+        uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
+        intstatus |= HME_SEB_STAT_HOSTTOTX;
+        s->sebregs[HME_SEBI_STAT >> 2] = intstatus;
+
+        /* Autoclear TX pending */
+        s->etxregs[HME_ETXI_PENDING >> 2] = 0;
+
+        hme_update_irq(s);
+        count++;
+    }
+    
+    /* TX FIFO now clear */
+    uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
+    intstatus |= HME_SEB_STAT_TXALL;
+    s->sebregs[HME_SEBI_STAT >> 2] = intstatus;
+    hme_update_irq(s);
+}
 
 static int hme_can_receive(NetClientState *nc)
 {
