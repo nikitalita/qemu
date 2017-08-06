@@ -478,7 +478,7 @@ static void hme_transmit_frame(HMEState *s, uint8_t *buf, int size)
 
 static inline int hme_get_tx_ring_count(HMEState *s)
 {
-    return s->etxregs[HME_ETXI_RSIZE];
+    return (s->etxregs[HME_ETXI_RSIZE >> 2] + 1) << 4;
 }
 
 static inline int hme_get_tx_ring_nr(HMEState *s)
@@ -499,23 +499,23 @@ static void hme_transmit(HMEState *s)
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t tb, addr;
     uint32_t status, buffer;
-    int cr, len, count;
+    int cr, nr, len;
     uint8_t xmit_buffer[HME_FIFO_SIZE];
 
     DPRINTF("hme_transmit!\n");
     
     tb = s->etxregs[HME_ETXI_RING >> 2] & HME_ETXI_RING_ADDR;
+    nr = hme_get_tx_ring_count(s);
     cr = hme_get_tx_ring_nr(s);
     
-    DPRINTF("tb " DMA_ADDR_FMT "  %d\n", tb, cr);
+    DPRINTF("tb " DMA_ADDR_FMT "  %d  (nr: %d)\n", tb, cr, nr);
     
     pci_dma_read(d, tb + cr * HME_DESC_SIZE, &status, 4);
     pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
 
     DPRINTF("-- status: %" PRIx32 "\n", status);
     
-    count = 0;
-    while ((status & HME_XD_OWN) && count <= hme_get_tx_ring_count(s)) {
+    while (status & HME_XD_OWN) {
         /* Copy data into transmit buffer */
         addr = buffer;
         len = status & HME_XD_TXLENMSK;
@@ -535,7 +535,7 @@ static void hme_transmit(HMEState *s)
         pci_dma_write(d, tb + cr * HME_DESC_SIZE, &status, 4);
 
         cr++;
-        if (cr >= hme_get_tx_ring_count(s)) {
+        if (cr >= nr) {
             cr = 0;
         }
 
@@ -550,7 +550,6 @@ static void hme_transmit(HMEState *s)
         s->etxregs[HME_ETXI_PENDING >> 2] = 0;
 
         hme_update_irq(s);
-        count++;
     }
     
     /* TX FIFO now clear */
@@ -664,7 +663,7 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     pci_dma_write(d, rb + cr * HME_DESC_SIZE, &status, 4);
 
     cr++;
-    if (cr >= hme_get_rx_ring_count(s)) {
+    if (cr >= nr) {
         cr = 0;
     }
 
