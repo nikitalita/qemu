@@ -27,6 +27,7 @@
 #include "hw/pci/pci.h"
 #include "hw/net/mii.h"
 #include "net/net.h"
+#include "net/checksum.h"
 #include "net/eth.h"
 
 #define HME_REG_SIZE                   0x8000
@@ -64,6 +65,8 @@
 #define HME_ERX_CFG_RINGSIZE_SHIFT     9
 #define HME_ERX_CFG_BYTEOFFSET         0x38    /* RX first byte offset */
 #define HME_ERX_CFG_BYTEOFFSET_SHIFT   3
+#define HME_ERX_CFG_CSUMSTART          0x7f0000  /* cksum offset (half words) */
+#define	HME_ERX_CFG_CSUMSHIFT          16
 
 #define HME_ERXI_RING                  0x4
 #define HME_ERXI_RING_ADDR             0xffffff00
@@ -132,7 +135,13 @@ typedef struct HMEDesc {
 #define HME_XD_OFL             0x40000000    /* buffer overflow (rx) */
 #define HME_XD_RXLENMSK        0x3fff0000    /* packet length mask (rx) */
 #define HME_XD_RXLENSHIFT      16
+#define HME_XD_RXCKSUM         0xffff        /* packet checksum (rx), complement */
 #define HME_XD_TXLENMSK        0x00001fff
+#define HME_XD_TXCKSUM         0x10000000    /* checksum enable (tx) */
+#define HME_XD_TXCSSTUFF       0xff00000     /* checksum stuff offset (tx) */
+#define HME_XD_TXCSSTUFFSHIFT  20
+#define HME_XD_TXCSSTART       0xfc000       /* checksum start offset (tx) */
+#define HME_XD_TXCSSTARTSHIFT  14
 
 typedef struct HMEState {
     /*< private >*/
@@ -498,8 +507,9 @@ static void hme_transmit(HMEState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t tb, addr;
-    uint32_t status, buffer;
-    int cr, nr, len;
+    uint32_t status, buffer, sum;
+    int cr, nr, len, csum_offset, csum_stuff_offset;
+    uint16_t csum;
     uint8_t xmit_buffer[HME_FIFO_SIZE];
 
     DPRINTF("hme_transmit!\n");
@@ -528,9 +538,25 @@ static void hme_transmit(HMEState *s)
         DPRINTF("  addr: " DMA_ADDR_FMT " len: %d\n", addr, len);
         pci_dma_read(d, addr, &xmit_buffer, len);
 
+        /* Calculate checksum if required */
+        if (status & HME_XD_TXCKSUM) {
+            csum_offset = (status & HME_XD_TXCSSTART) >> HME_XD_TXCSSTARTSHIFT;
+	    DPRINTF("################ requested xsum start at %d\n", csum_offset);
+	    csum_stuff_offset = (status & HME_XD_TXCSSTUFF) >> HME_XD_TXCSSTUFFSHIFT;
+	    DPRINTF("################ requested xsum stuff at %d\n", csum_stuff_offset);
+	    
+	    stw_be_p(xmit_buffer + csum_stuff_offset, 0);
+	    
+            sum = 0;
+            sum += net_checksum_add(len - csum_offset, xmit_buffer + csum_offset);
+            csum = net_checksum_finish(sum);
+	    
+	    stw_be_p(xmit_buffer + csum_stuff_offset, csum);
+        }
+
         hme_transmit_frame(s, xmit_buffer, len);
 
-        /* Return descriptor back to OS */
+        /* Update status */
         status &= ~HME_XD_OWN;
         pci_dma_write(d, tb + cr * HME_DESC_SIZE, &status, 4);
 
@@ -601,6 +627,75 @@ static inline void hme_set_rx_ring_nr(HMEState *s, int i)
     s->erxregs[HME_ERXI_RING >> 2] = ring;
 }
 
+/* Inspired by net_checksum_calculate() */
+#if 0
+static uint16_t hme_calculate_rx_checksum(HMEState *s, const uint8_t *data, int length)
+{
+    int mac_hdr_len, ip_len;
+    struct ip_header *ip;
+
+    /* Ensure we have at least an Eth header */
+    if (length < sizeof(struct eth_header)) {
+        return 0;
+    }
+    
+    /* Handle the optionnal VLAN headers */
+    switch (lduw_be_p(&PKT_GET_ETH_HDR(data)->h_proto)) {
+    case ETH_P_VLAN:
+        mac_hdr_len = sizeof(struct eth_header) +
+                     sizeof(struct vlan_header);
+        break;
+    case ETH_P_DVLAN:
+        if (lduw_be_p(&PKT_GET_VLAN_HDR(data)->h_proto) == ETH_P_VLAN) {
+            mac_hdr_len = sizeof(struct eth_header) +
+                         2 * sizeof(struct vlan_header);
+        } else {
+            mac_hdr_len = sizeof(struct eth_header) +
+                         sizeof(struct vlan_header);
+        }
+        break;
+    default:
+        mac_hdr_len = sizeof(struct eth_header);
+        break;
+    }
+
+    length -= mac_hdr_len;
+
+    /* Now check we have an IP header (with an optionnal VLAN header) */
+    if (length < sizeof(struct ip_header)) {
+        return 0;
+    }
+
+    ip = (struct ip_header *)(data + mac_hdr_len);
+
+    if (IP_HEADER_VERSION(ip) != IP_HEADER_VERSION_4) {
+        return 0; /* not IPv4 */
+    }
+
+    ip_len = lduw_be_p(&ip->ip_len);
+
+    /* Last, check that we have enough data for the all IP frame */
+    if (length < ip_len) {
+        return 0;
+    }
+
+    ip_len -= IP_HDR_GET_LEN(ip);
+
+    switch (ip->ip_p) {
+    case IP_PROTO_TCP:
+        DPRINTF("   TCP checksum!\n");
+    case IP_PROTO_UDP:
+        DPRINTF("   UDP checksum!\n");
+        return 0;
+    default:
+        /* Can't handle any other protocol */
+        break;
+    }
+    
+    return 0;
+}
+#endif
+
 #define MIN_BUF_SIZE 60
 
 static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
@@ -610,9 +705,10 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     HMEState *s = qemu_get_nic_opaque(nc);
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t rb, addr, rxoffset;
-    uint32_t status, buffer, buffersize;
+    uint32_t status, buffer, buffersize, sum;
+    uint16_t csum;
     uint8_t buf1[60];
-    int nr, cr, len;
+    int nr, cr, len, csum_offset;
 
     /* if too small buffer, then expand it */
     if (size < MIN_BUF_SIZE) {
@@ -643,20 +739,25 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
         status |= HME_XD_OFL;
         len = buffersize;
     }
-
+    
     DPRINTF("desc address " DMA_ADDR_FMT " - status %x with buffersize %d\n", addr, status, buffersize);
     pci_dma_write(d, addr, buf, len);
-
-    struct ip_header *ip = (struct ip_header *)buf;
-    uint8_t ip_protocol = ip->ip_p;
     
-    DPRINTF("protocol is %x\n", ip_protocol);
-
+    /* Calculate the receive checksum */
+    csum_offset = (s->erxregs[HME_ERXI_CFG >> 2] & HME_ERX_CFG_CSUMSTART) >>
+                  HME_ERX_CFG_CSUMSHIFT << 1;
+    sum = 0;
+    sum += net_checksum_add(len - csum_offset, (uint8_t *)buf + csum_offset);
+    csum = net_checksum_finish(sum);
     
-    /* Update status owner */
+    DPRINTF("  csum_offset: %d  buf: %p  buf_start: %p\n", csum_offset, buf, buf + csum_offset);
+    
+    /* Update status */
     status &= ~HME_XD_OWN;
     status &= ~HME_XD_RXLENMSK;
     status |= len << HME_XD_RXLENSHIFT;
+    status &= ~HME_XD_RXCKSUM;
+    status |= csum;
 
     DPRINTF("status is now %x\n", status);
     
