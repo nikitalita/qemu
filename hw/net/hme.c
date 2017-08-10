@@ -133,6 +133,8 @@ typedef struct HMEDesc {
 
 #define HME_XD_OWN             0x80000000    /* ownership: 1=hw, 0=sw */
 #define HME_XD_OFL             0x40000000    /* buffer overflow (rx) */
+#define HME_XD_SOP             0x40000000    /* start of packet marker (tx) */
+#define HME_XD_EOP             0x20000000    /* end of packet marker (tx) */
 #define HME_XD_RXLENMSK        0x3fff0000    /* packet length mask (rx) */
 #define HME_XD_RXLENSHIFT      16
 #define HME_XD_RXCKSUM         0xffff        /* packet checksum (rx), complement */
@@ -508,7 +510,7 @@ static void hme_transmit(HMEState *s)
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t tb, addr;
     uint32_t status, buffer, sum;
-    int cr, nr, len, csum_offset, csum_stuff_offset;
+    int cr, nr, len, xmit_pos, csum_offset, csum_stuff_offset;
     uint16_t csum;
     uint8_t xmit_buffer[HME_FIFO_SIZE];
 
@@ -519,53 +521,75 @@ static void hme_transmit(HMEState *s)
     cr = hme_get_tx_ring_nr(s);
     
     DPRINTF("tb " DMA_ADDR_FMT "  %d  (nr: %d)\n", tb, cr, nr);
-    
+
     pci_dma_read(d, tb + cr * HME_DESC_SIZE, &status, 4);
     pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
-
-    DPRINTF("-- status: %" PRIx32 "\n", status);
     
+    xmit_pos = 0;
     while (status & HME_XD_OWN) {
+        DPRINTF("-- status: %" PRIx32 " (cr: %d)\n", status, cr);
+
         /* Copy data into transmit buffer */
         addr = buffer;
         len = status & HME_XD_TXLENMSK;
 
         // TODO: Tx overflow? In sebregs
-        if (len > HME_FIFO_SIZE) {
-            len = HME_FIFO_SIZE;
+        if (xmit_pos + len > HME_FIFO_SIZE) {
+            len = HME_FIFO_SIZE - xmit_pos;
         }
-
-        DPRINTF("  addr: " DMA_ADDR_FMT " len: %d\n", addr, len);
-        pci_dma_read(d, addr, &xmit_buffer, len);
-
-        /* Calculate checksum if required */
-        if (status & HME_XD_TXCKSUM) {
+        
+        /* Detect start of packet for TX checksum */
+	if (status & HME_XD_SOP) {
+            DPRINTF("---> start of packet, resetting xsum\n");
+	    sum = 0;
             csum_offset = (status & HME_XD_TXCSSTART) >> HME_XD_TXCSSTARTSHIFT;
 	    DPRINTF("################ requested xsum start at %d\n", csum_offset);
 	    csum_stuff_offset = (status & HME_XD_TXCSSTUFF) >> HME_XD_TXCSSTUFFSHIFT;
 	    DPRINTF("################ requested xsum stuff at %d\n", csum_stuff_offset);
-	    
-	    stw_be_p(xmit_buffer + csum_stuff_offset, 0);
-	    
-            sum = 0;
-            sum += net_checksum_add(len - csum_offset, xmit_buffer + csum_offset);
-            csum = net_checksum_finish(sum);
-	    
-	    stw_be_p(xmit_buffer + csum_stuff_offset, csum);
+	}
+	
+        DPRINTF("  addr: " DMA_ADDR_FMT " len: %d  xmit_pos: %d\n", addr, len, xmit_pos);
+        pci_dma_read(d, addr, &xmit_buffer[xmit_pos], len);
+	xmit_pos += len;
+	
+        if (status & HME_XD_TXCKSUM) {
+            /* Only start calculation from csum_offset */
+	    if (xmit_pos - len <= csum_offset && xmit_pos > csum_offset) {
+                DPRINTF(" * xsum trunc: offset %d, len %d\n", csum_offset, xmit_pos - csum_offset);
+                sum += net_checksum_add(xmit_pos - csum_offset, xmit_buffer + csum_offset);
+	    } else {
+                DPRINTF(" * xsum normal: offset %d, len %d\n", xmit_pos - len, len);
+                sum += net_checksum_add(len, xmit_buffer + xmit_pos - len);
+	    }
         }
 
-        hme_transmit_frame(s, xmit_buffer, len);
+        /* Detect end of packet for TX checksum, and stuff it in */
+        if (status & HME_XD_EOP) {
+            DPRINTF("<--- end of packet, total length %d\n", xmit_pos);
+	    
+	    /* Stuff the checksum */
+	    if (status & HME_XD_TXCKSUM) {
+                csum = net_checksum_finish(sum);
+		DPRINTF("==== stuffing checksum %x at offset %d  (%p, %p)\n", csum, csum_stuff_offset, xmit_buffer, xmit_buffer + csum_stuff_offset);
+                stw_be_p(xmit_buffer + csum_stuff_offset, csum);
+	    }
 
+            hme_transmit_frame(s, xmit_buffer, xmit_pos);
+        }
+        
         /* Update status */
         status &= ~HME_XD_OWN;
         pci_dma_write(d, tb + cr * HME_DESC_SIZE, &status, 4);
 
+	/* Move onto next descriptor */
         cr++;
         if (cr >= nr) {
             cr = 0;
         }
-
         hme_set_tx_ring_nr(s, cr);
+
+        pci_dma_read(d, tb + cr * HME_DESC_SIZE, &status, 4);
+        pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
 
         /* Indicate TX complete */
         uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
