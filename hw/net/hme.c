@@ -458,12 +458,16 @@ static void hme_mif_write(void *opaque, hwaddr addr,
         /* Detect start of MII command */
         if ((val & HME_MIF_FO_ST) >> HME_MIF_FO_ST_SHIFT
             != MII_COMMAND_START) {
+            DPRINTF("XXXXXXXXXX not a start!\n");
+	    val |= HME_MIF_FO_TALSB;
             break;
         }
         
         /* Internal phy only */
         if ((val & HME_MIF_FO_PHYAD) >> HME_MIF_FO_PHYAD_SHIFT
             != HME_PHYAD_INTERNAL) {
+	    DPRINTF("XXXXXXXXXX internal!\n");
+	    val |= HME_MIF_FO_TALSB;
             break;
         }
         
@@ -936,6 +940,10 @@ static void hme_reset(DeviceState *ds)
         s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
         s->miiregs[MII_BMSR] |= MII_BMSR_LINK_ST;
     }
+    
+    /* Set manufacturer */
+    s->miiregs[MII_PHYID1] = DP83840_PHYID1;
+    s->miiregs[MII_PHYID2] = DP83840_PHYID2;
     
     /* Configure default interrupt mask */
     s->mifregs[HME_MIFI_IMASK >> 2] = 0xffff;
