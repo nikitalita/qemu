@@ -38,15 +38,15 @@
 #define HME_SEB_RESET_ETX              0x1
 #define HME_SEB_RESET_ERX              0x2
 
-//#define HME_SEBI_STAT                  0x100
-#define HME_SEBI_STAT                  0x108
+#define HME_SEBI_STAT                  0x100
+#define HME_SEBI_STAT_LINUXBUG         0x108
 #define HME_SEB_STAT_RXTOHOST          0x10000    /* pkt moved from rx fifo->memory */
 #define HME_SEB_STAT_MIFIRQ            0x800000   /* mif needs attention */
 #define HME_SEB_STAT_HOSTTOTX          0x1000000  /* pkt moved from memory->tx fifo */
 #define HME_SEB_STAT_TXALL             0x2000000  /* all pkts in fifo transmitted */
 
-//#define HME_SEBI_IMASK                 0x104
-#define HME_SEBI_IMASK                 0x10c
+#define HME_SEBI_IMASK                 0x104
+#define HME_SEBI_IMASK_LINUXBUG        0x10c
 
 #define HME_ETX_REG_SIZE               0x2000
 
@@ -230,6 +230,19 @@ static void hme_seb_write(void *opaque, hwaddr addr,
 
     DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
 
+    /* Handly buggy Linux drivers before 4.13 which have
+       the wrong offsets for HME_SEBI_STAT and HME_SEBI_IMASK */
+    switch (addr) {
+    case HME_SEBI_STAT_LINUXBUG:
+        addr = HME_SEBI_STAT;
+        break;
+    case HME_SEBI_IMASK_LINUXBUG:
+        addr = HME_SEBI_IMASK;
+        break;
+    default:
+        break;
+    }
+    
     switch (addr) {
     case HME_SEBI_RESET:
         if (val & HME_SEB_RESET_ETX) {
@@ -249,6 +262,20 @@ static uint64_t hme_seb_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
     HMEState *s = HME(opaque);
+    
+    /* Handly buggy Linux drivers before 4.13 which have
+       the wrong offsets for HME_SEBI_STAT and HME_SEBI_IMASK */
+    switch (addr) {
+    case HME_SEBI_STAT_LINUXBUG:
+        addr = HME_SEBI_STAT;
+        break;
+    case HME_SEBI_IMASK_LINUXBUG:
+        addr = HME_SEBI_IMASK;
+        break;
+    default:
+        break;
+    }
+    
     uint64_t val = s->sebregs[addr >> 2];
     
     switch (addr) {
