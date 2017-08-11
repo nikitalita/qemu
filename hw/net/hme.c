@@ -61,7 +61,7 @@
 #define HME_ERX_REG_SIZE               0x2000
 
 #define HME_ERXI_CFG                   0x0
-#define HME_ERX_CFG_RINGSIZE           0x300
+#define HME_ERX_CFG_RINGSIZE           0x600
 #define HME_ERX_CFG_RINGSIZE_SHIFT     9
 #define HME_ERX_CFG_BYTEOFFSET         0x38    /* RX first byte offset */
 #define HME_ERX_CFG_BYTEOFFSET_SHIFT   3
@@ -114,7 +114,7 @@
 
 
 /* Change to 1 to enable debugging */
-#define DEBUG_HME 1
+#define DEBUG_HME 0
 
 #define DPRINTF(fmt, ...) do { \
     if (DEBUG_HME) { \
