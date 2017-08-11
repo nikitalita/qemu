@@ -74,6 +74,12 @@
 
 #define HME_MAC_REG_SIZE               0x1000
 
+#define HME_MACI_TXCFG                 0x20c    /* TX config */
+#define HME_MAC_TXCFG_ENABLE           0x1      /* Enable the transmitter */
+
+#define HME_MACI_RXCFG                 0x30c    /* RX config */
+#define HME_MAC_RXCFG_ENABLE           0x1      /* Enable the receiver */
+
 #define HME_MIF_REG_SIZE               0x20
 
 #define HME_MIFI_FO                    0xc
@@ -578,7 +584,9 @@ static void hme_transmit(HMEState *s)
                 stw_be_p(xmit_buffer + csum_stuff_offset, csum);
 	    }
 
-            hme_transmit_frame(s, xmit_buffer, xmit_pos);
+	    if (s->macregs[HME_MACI_TXCFG >> 2] & HME_MAC_TXCFG_ENABLE) {
+                hme_transmit_frame(s, xmit_buffer, xmit_pos);
+	    }
         }
         
         /* Update status */
@@ -615,7 +623,9 @@ static void hme_transmit(HMEState *s)
 
 static int hme_can_receive(NetClientState *nc)
 {
-    return 1;
+    HMEState *s = qemu_get_nic_opaque(nc);
+
+    return s->macregs[HME_MAC_RXCFG_ENABLE >> 2] & HME_MAC_RXCFG_ENABLE;
 }
 
 static void hme_link_status_changed(NetClientState *nc)
