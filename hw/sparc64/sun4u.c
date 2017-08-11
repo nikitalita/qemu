@@ -468,6 +468,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     //for(i = 0; i < nb_nics; i++)
     //    pci_nic_init_nofail(&nd_table[i], pci_bus, "ne2k_pci", NULL);
     pci_dev = pci_create(pci_bus, -1, "hme");
+    //pci_dev = pci_create(pci_bus, -1, "e1000");
     dev = &pci_dev->qdev;
     qdev_set_nic_properties(dev, &nd_table[0]);
     qdev_init_nofail(dev);

@@ -383,9 +383,13 @@ static void hme_mii_write(HMEState *s, uint8_t reg, uint16_t data)
             /* Autoclear auto negotiation restart */
             data &= ~MII_BMCR_ANRESTART;
 
-            /* Indicate negotiation complete at 100Mbps FD */
-            s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
-            s->miiregs[MII_BMSR] |= (MII_BMSR_AN_COMP | MII_BMSR_LINK_ST);
+            /* Indicate negotiation complete */
+            s->miiregs[MII_BMSR] |= MII_BMSR_AN_COMP;
+
+            if (!qemu_get_queue(s->nic)->link_down) {
+                s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
+                s->miiregs[MII_BMSR] |= MII_BMSR_LINK_ST;
+            }
         }
         break;
     }
@@ -614,9 +618,21 @@ static int hme_can_receive(NetClientState *nc)
     return 1;
 }
 
-static void hme_set_link_status(NetClientState *nc)
+static void hme_link_status_changed(NetClientState *nc)
 {
-    return;
+    HMEState *s = qemu_get_nic_opaque(nc);
+
+    if (nc->link_down) {
+        s->miiregs[MII_ANLPAR] &= ~MII_ANLPAR_TXFD;
+        s->miiregs[MII_BMSR] &= ~MII_BMSR_LINK_ST;
+    } else {
+        s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
+        s->miiregs[MII_BMSR] |= MII_BMSR_LINK_ST;
+    }
+    
+    /* Exact bits unknown */
+    s->mifregs[HME_MIFI_STAT >> 2] = 0xffff;
+    hme_update_irq(s);
 }
 
 static inline int hme_get_rx_ring_count(HMEState *s)
@@ -809,7 +825,7 @@ static NetClientInfo net_hme_info = {
     .size = sizeof(NICState),
     .can_receive = hme_can_receive,
     .receive = hme_receive,
-    .link_status_changed = hme_set_link_status,
+    .link_status_changed = hme_link_status_changed,
 };
 
 static void hme_realize(PCIDevice *pci_dev, Error **errp)
@@ -877,7 +893,12 @@ static void hme_reset(DeviceState *ds)
     
     /* Advetise 100Mbps FD */
     s->miiregs[MII_ANAR] = MII_ANAR_TXFD;
-    s->miiregs[MII_BMSR] = MII_BMSR_100TX_FD;
+    s->miiregs[MII_BMSR] = MII_BMSR_100TX_FD | MII_BMSR_AN_COMP;
+    
+    if (!qemu_get_queue(s->nic)->link_down) {
+        s->miiregs[MII_ANLPAR] |= MII_ANLPAR_TXFD;
+        s->miiregs[MII_BMSR] |= MII_BMSR_LINK_ST;
+    }
     
     /* Configure default interrupt mask */
     s->mifregs[HME_MIFI_IMASK >> 2] = 0xffff;
