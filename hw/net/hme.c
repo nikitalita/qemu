@@ -553,9 +553,9 @@ static void hme_transmit(HMEState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t tb, addr;
-    uint32_t intstatus, status, buffer, sum;
-    int cr, nr, len, xmit_pos, csum_offset, csum_stuff_offset;
-    uint16_t csum;
+    uint32_t intstatus, status, buffer, sum = 0;
+    int cr, nr, len, xmit_pos, csum_offset = 0, csum_stuff_offset = 0;
+    uint16_t csum = 0;
     uint8_t xmit_buffer[HME_FIFO_SIZE];
     
     tb = s->etxregs[HME_ETXI_RING >> 2] & HME_ETXI_RING_ADDR;
