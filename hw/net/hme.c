@@ -154,6 +154,8 @@ typedef struct HMEDesc {
 #define HME_XD_TXCSSTART       0xfc000       /* checksum start offset (tx) */
 #define HME_XD_TXCSSTARTSHIFT  14
 
+#define HME_MII_REGS_SIZE      0x20
+
 typedef struct HMEState {
     /*< private >*/
     PCIDevice parent_obj;
@@ -174,7 +176,7 @@ typedef struct HMEState {
     uint32_t macregs[HME_MAC_REG_SIZE >> 2];
     uint32_t mifregs[HME_MIF_REG_SIZE >> 2];
     
-    uint16_t miiregs[0x20];
+    uint16_t miiregs[HME_MII_REGS_SIZE];
 } HMEState;
 
 static Property hme_properties[] = {
@@ -932,6 +934,23 @@ static void hme_reset(DeviceState *ds)
     s->sebregs[HME_SEBI_IMASK >> 2] = 0xff7fffff;
 }
 
+static const VMStateDescription vmstate_hme = {
+    .name = "hme",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(parent_obj, HMEState),
+        VMSTATE_MACADDR(conf.macaddr, HMEState),
+        VMSTATE_UINT32_ARRAY(sebregs, HMEState, (HME_SEB_REG_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(etxregs, HMEState, (HME_ETX_REG_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(erxregs, HMEState, (HME_ERX_REG_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(macregs, HMEState, (HME_MAC_REG_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(mifregs, HMEState, (HME_MIF_REG_SIZE >> 2)),
+        VMSTATE_UINT16_ARRAY(miiregs, HMEState, HME_MII_REGS_SIZE),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void hme_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -941,7 +960,7 @@ static void hme_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_SUN;
     k->device_id = PCI_DEVICE_ID_SUN_HME;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
-    //dc->vmsd = &vmstate_hme;
+    dc->vmsd = &vmstate_hme;
     dc->reset = hme_reset;
     dc->props = hme_properties;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
