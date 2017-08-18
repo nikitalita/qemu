@@ -29,6 +29,8 @@
 #include "net/net.h"
 #include "net/checksum.h"
 #include "net/eth.h"
+#include "sysemu/sysemu.h"
+#include "trace.h"
 
 #define HME_REG_SIZE                   0x8000
 
@@ -79,6 +81,17 @@
 
 #define HME_MACI_RXCFG                 0x30c    /* RX config */
 #define HME_MAC_RXCFG_ENABLE           0x1      /* Enable the receiver */
+#define HME_MAC_RXCFG_PMISC            0x40     /* Enable promiscuous mode */
+#define HME_MAC_RXCFG_HENABLE          0x800    /* Enable the hash filter */
+
+#define HME_MACI_MACADDR2              0x318    /* MAC address */
+#define HME_MACI_MACADDR1              0x31c
+#define HME_MACI_MACADDR0              0x320
+
+#define HME_MACI_HASHTAB3              0x340    /* Address hash table */
+#define HME_MACI_HASHTAB2              0x344
+#define HME_MACI_HASHTAB1              0x348
+#define HME_MACI_HASHTAB0              0x34c
 
 #define HME_MIF_REG_SIZE               0x20
 
@@ -111,16 +124,6 @@
 #define MII_COMMAND_START      0x1
 #define MII_COMMAND_READ       0x2
 #define MII_COMMAND_WRITE      0x1
-
-
-/* Change to 1 to enable debugging */
-#define DEBUG_HME 0
-
-#define DPRINTF(fmt, ...) do { \
-    if (DEBUG_HME) { \
-        printf("HME: " fmt , ## __VA_ARGS__); \
-    } \
-} while (0);
 
 #define TYPE_HME "hme"
 #define HME(obj) OBJECT_CHECK(HMEState, (obj), TYPE_HME)
@@ -200,26 +203,15 @@ static void hme_update_irq(HMEState *s)
     uint32_t mifmask = ~(s->mifregs[HME_MIFI_IMASK >> 2]) & 0xffff;
     uint32_t mif = s->mifregs[HME_MIFI_STAT >> 2] & mifmask;
 
-    DPRINTF("irq mif: %x\n", mif);
-    
     /* Main SEB interrupt mask (include MIF status from above) */
-    uint32_t sebimask = s->sebregs[HME_SEBI_IMASK >> 2];
-    DPRINTF("sebimask: %x\n", sebimask);
-    uint32_t sebimask2 = ~(s->sebregs[HME_SEBI_IMASK >> 2]);
-    DPRINTF("sebimask2: %x\n", sebimask2);
-    uint32_t sebstat = s->sebregs[HME_SEBI_STAT >> 2];
-    DPRINTF("sebstat: %x\n", sebstat);
-    
     uint32_t sebmask = ~(s->sebregs[HME_SEBI_IMASK >> 2]) &
                        ~HME_SEB_STAT_MIFIRQ;
     uint32_t seb = s->sebregs[HME_SEBI_STAT >> 2] & sebmask;
     if (mif) {
         seb |= HME_SEB_STAT_MIFIRQ;
     }
-    
+
     level = (seb ? 1 : 0);
-    
-    DPRINTF("irq level: %x  seb: %x\n", level, seb);
     pci_set_irq(d, level);
 }
 
@@ -228,7 +220,7 @@ static void hme_seb_write(void *opaque, hwaddr addr,
 {
     HMEState *s = HME(opaque);
 
-    DPRINTF("hme_seb_write %" HWADDR_PRIx " %lx\n", addr, val);
+    trace_hme_seb_write(addr, val);
 
     /* Handly buggy Linux drivers before 4.13 which have
        the wrong offsets for HME_SEBI_STAT and HME_SEBI_IMASK */
@@ -262,6 +254,7 @@ static uint64_t hme_seb_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
     HMEState *s = HME(opaque);
+    uint64_t val;
     
     /* Handly buggy Linux drivers before 4.13 which have
        the wrong offsets for HME_SEBI_STAT and HME_SEBI_IMASK */
@@ -275,9 +268,9 @@ static uint64_t hme_seb_read(void *opaque, hwaddr addr,
     default:
         break;
     }
-    
-    uint64_t val = s->sebregs[addr >> 2];
-    
+
+    val = s->sebregs[addr >> 2];
+
     switch (addr) {
     case HME_SEBI_STAT:
         /* Autoclear status (except MIF) */
@@ -286,7 +279,7 @@ static uint64_t hme_seb_read(void *opaque, hwaddr addr,
         break;
     }
     
-    DPRINTF("hme_seb_read %" HWADDR_PRIx " %lx\n", addr, val);
+    trace_hme_seb_read(addr, val);
 
     return val;
 }
@@ -308,13 +301,13 @@ static void hme_etx_write(void *opaque, hwaddr addr,
 {
     HMEState *s = HME(opaque);
 
-    DPRINTF("hme_etx_write %" HWADDR_PRIx " %lx\n", addr, val);
-    
+    trace_hme_etx_write(addr, val);
+
     switch (addr) {
     case HME_ETXI_PENDING:
         if (val) {
             hme_transmit(s);
-	}
+        }
         break;
     }
     
@@ -325,10 +318,13 @@ static uint64_t hme_etx_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
     HMEState *s = HME(opaque);
+    uint64_t val;
+    
+    val = s->etxregs[addr >> 2];
+    
+    trace_hme_etx_read(addr, val);
 
-    DPRINTF("hme_etx_read %" HWADDR_PRIx "\n", addr);
-
-    return s->etxregs[addr >> 2];
+    return val;
 }
 
 static const MemoryRegionOps hme_etx_ops = {
@@ -346,8 +342,8 @@ static void hme_erx_write(void *opaque, hwaddr addr,
 {
     HMEState *s = HME(opaque);
 
-    DPRINTF("hme_erx_write %" HWADDR_PRIx " %lx\n", addr, val);
-    
+    trace_hme_erx_write(addr, val);
+
     s->erxregs[addr >> 2] = val;
 }
 
@@ -355,10 +351,13 @@ static uint64_t hme_erx_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
     HMEState *s = HME(opaque);
+    uint64_t val;
+    
+    val = s->erxregs[addr >> 2];
+    
+    trace_hme_erx_read(addr, val);
 
-    DPRINTF("hme_erx_read %" HWADDR_PRIx "\n", addr);
-
-    return s->erxregs[addr >> 2];    return 0;
+    return val;
 }
 
 static const MemoryRegionOps hme_erx_ops = {
@@ -376,8 +375,8 @@ static void hme_mac_write(void *opaque, hwaddr addr,
 {
     HMEState *s = HME(opaque);
 
-    DPRINTF("hme_mac_write %" HWADDR_PRIx " %lx\n", addr, val);
-    
+    trace_hme_mac_write(addr, val);
+
     s->macregs[addr >> 2] = val;
 }
 
@@ -385,10 +384,13 @@ static uint64_t hme_mac_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
     HMEState *s = HME(opaque);
+    uint64_t val;
+    
+    val = s->macregs[addr >> 2];
+    
+    trace_hme_mac_read(addr, val);
 
-    DPRINTF("hme_mac_read %" HWADDR_PRIx "\n", addr);
-
-    return s->macregs[addr >> 2];
+    return val;
 }
 
 static const MemoryRegionOps hme_mac_ops = {
@@ -403,8 +405,8 @@ static const MemoryRegionOps hme_mac_ops = {
 
 static void hme_mii_write(HMEState *s, uint8_t reg, uint16_t data)
 {
-    DPRINTF("hme_mii_write %x %x\n", reg, data);
-    
+    trace_hme_mii_write(reg, data);
+
     switch (reg) {
     case MII_BMCR:
         if (data & MII_BMCR_RESET) {
@@ -432,9 +434,11 @@ static void hme_mii_write(HMEState *s, uint8_t reg, uint16_t data)
 
 static uint16_t hme_mii_read(HMEState *s, uint8_t reg)
 {
-    DPRINTF("hme_mii_read %x %x\n", reg, s->miiregs[reg]);
+    uint16_t data = s->miiregs[reg];
 
-    return s->miiregs[reg];
+    trace_hme_mii_read(reg, data);
+
+    return data;
 }
 
 static void hme_mif_write(void *opaque, hwaddr addr,
@@ -444,7 +448,7 @@ static void hme_mif_write(void *opaque, hwaddr addr,
     uint8_t cmd, reg;
     uint16_t data;
     
-    DPRINTF("hme_mif_write %" HWADDR_PRIx " %lx\n", addr, val);
+    trace_hme_mif_write(addr, val);
 
     switch (addr) {
     case HME_MIFI_CFG:
@@ -457,20 +461,18 @@ static void hme_mif_write(void *opaque, hwaddr addr,
     case HME_MIFI_FO:
         /* Detect start of MII command */
         if ((val & HME_MIF_FO_ST) >> HME_MIF_FO_ST_SHIFT
-            != MII_COMMAND_START) {
-            DPRINTF("XXXXXXXXXX not a start!\n");
-	    val |= HME_MIF_FO_TALSB;
+                != MII_COMMAND_START) {
+            val |= HME_MIF_FO_TALSB;
             break;
         }
         
         /* Internal phy only */
         if ((val & HME_MIF_FO_PHYAD) >> HME_MIF_FO_PHYAD_SHIFT
-            != HME_PHYAD_INTERNAL) {
-	    DPRINTF("XXXXXXXXXX internal!\n");
-	    val |= HME_MIF_FO_TALSB;
+                != HME_PHYAD_INTERNAL) {
+            val |= HME_MIF_FO_TALSB;
             break;
         }
-        
+
         cmd = (val & HME_MIF_FO_OPC) >> HME_MIF_FO_OPC_SHIFT;
         reg = (val & HME_MIF_FO_REGAD) >> HME_MIF_FO_REGAD_SHIFT;
         data = (val & HME_MIF_FO_DATA);
@@ -489,7 +491,7 @@ static void hme_mif_write(void *opaque, hwaddr addr,
         val |= HME_MIF_FO_TALSB;        
         break;
     }
-
+    
     s->mifregs[addr >> 2] = val;
 }
 
@@ -508,8 +510,9 @@ static uint64_t hme_mif_read(void *opaque, hwaddr addr,
         hme_update_irq(s);
         break;
     }
-    
-    DPRINTF("hme_mif_read %" HWADDR_PRIx " %lx\n", addr, val);
+
+    trace_hme_mif_read(addr, val);
+
     return val;
 }
 
@@ -550,25 +553,21 @@ static void hme_transmit(HMEState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
     dma_addr_t tb, addr;
-    uint32_t status, buffer, sum;
+    uint32_t intstatus, status, buffer, sum;
     int cr, nr, len, xmit_pos, csum_offset, csum_stuff_offset;
     uint16_t csum;
     uint8_t xmit_buffer[HME_FIFO_SIZE];
-
-    DPRINTF("hme_transmit!\n");
     
     tb = s->etxregs[HME_ETXI_RING >> 2] & HME_ETXI_RING_ADDR;
     nr = hme_get_tx_ring_count(s);
     cr = hme_get_tx_ring_nr(s);
     
-    DPRINTF("tb " DMA_ADDR_FMT "  %d  (nr: %d)\n", tb, cr, nr);
-
     pci_dma_read(d, tb + cr * HME_DESC_SIZE, &status, 4);
     pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
     
     xmit_pos = 0;
     while (status & HME_XD_OWN) {
-        DPRINTF("-- status: %" PRIx32 " (cr: %d)\n", status, cr);
+        trace_hme_tx_desc(buffer, status, cr, nr);
 
         /* Copy data into transmit buffer */
         addr = buffer;
@@ -578,53 +577,48 @@ static void hme_transmit(HMEState *s)
         if (xmit_pos + len > HME_FIFO_SIZE) {
             len = HME_FIFO_SIZE - xmit_pos;
         }
-        
-        /* Detect start of packet for TX checksum */
-	if (status & HME_XD_SOP) {
-            DPRINTF("---> start of packet, resetting xsum\n");
-	    sum = 0;
-            csum_offset = (status & HME_XD_TXCSSTART) >> HME_XD_TXCSSTARTSHIFT;
-	    DPRINTF("################ requested xsum start at %d\n", csum_offset);
-	    csum_stuff_offset = (status & HME_XD_TXCSSTUFF) >> HME_XD_TXCSSTUFFSHIFT;
-	    DPRINTF("################ requested xsum stuff at %d\n", csum_stuff_offset);
-	}
-	
-        DPRINTF("  addr: " DMA_ADDR_FMT " len: %d  xmit_pos: %d\n", addr, len, xmit_pos);
+
         pci_dma_read(d, addr, &xmit_buffer[xmit_pos], len);
-	xmit_pos += len;
-	
-        if (status & HME_XD_TXCKSUM) {
-            /* Only start calculation from csum_offset */
-	    if (xmit_pos - len <= csum_offset && xmit_pos > csum_offset) {
-                DPRINTF(" * xsum trunc: offset %d, len %d\n", csum_offset, xmit_pos - csum_offset);
-                sum += net_checksum_add(xmit_pos - csum_offset, xmit_buffer + csum_offset);
-	    } else {
-                DPRINTF(" * xsum normal: offset %d, len %d\n", xmit_pos - len, len);
-                sum += net_checksum_add(len, xmit_buffer + xmit_pos - len);
-	    }
+        xmit_pos += len;
+
+        /* Detect start of packet for TX checksum */
+        if (status & HME_XD_SOP) {
+            sum = 0;
+            csum_offset = (status & HME_XD_TXCSSTART) >> HME_XD_TXCSSTARTSHIFT;
+            csum_stuff_offset = (status & HME_XD_TXCSSTUFF) >> HME_XD_TXCSSTUFFSHIFT;
         }
 
-        /* Detect end of packet for TX checksum, and stuff it in */
-        if (status & HME_XD_EOP) {
-            DPRINTF("<--- end of packet, total length %d\n", xmit_pos);
-	    
-	    /* Stuff the checksum */
-	    if (status & HME_XD_TXCKSUM) {
-                csum = net_checksum_finish(sum);
-		DPRINTF("==== stuffing checksum %x at offset %d  (%p, %p)\n", csum, csum_stuff_offset, xmit_buffer, xmit_buffer + csum_stuff_offset);
-                stw_be_p(xmit_buffer + csum_stuff_offset, csum);
-	    }
+        if (status & HME_XD_TXCKSUM) {
+            /* Only start calculation from csum_offset */
+            if (xmit_pos - len <= csum_offset && xmit_pos > csum_offset) {
+                sum += net_checksum_add(xmit_pos - csum_offset, xmit_buffer + csum_offset);
+                trace_hme_tx_xsum_add(csum_offset, xmit_pos - csum_offset);
+            } else {
+                sum += net_checksum_add(len, xmit_buffer + xmit_pos - len);
+                trace_hme_tx_xsum_add(xmit_pos - len, len);
+            }
+        }
 
-	    if (s->macregs[HME_MACI_TXCFG >> 2] & HME_MAC_TXCFG_ENABLE) {
+        /* Detect end of packet for TX checksum */
+        if (status & HME_XD_EOP) {
+            /* Stuff the checksum if required */
+            if (status & HME_XD_TXCKSUM) {
+                csum = net_checksum_finish(sum);
+                stw_be_p(xmit_buffer + csum_stuff_offset, csum);
+                trace_hme_tx_xsum_stuff(csum, csum_stuff_offset);
+            }
+
+            if (s->macregs[HME_MACI_TXCFG >> 2] & HME_MAC_TXCFG_ENABLE) {
                 hme_transmit_frame(s, xmit_buffer, xmit_pos);
-	    }
+                trace_hme_tx_done(xmit_pos);
+            }
         }
         
         /* Update status */
         status &= ~HME_XD_OWN;
         pci_dma_write(d, tb + cr * HME_DESC_SIZE, &status, 4);
 
-	/* Move onto next descriptor */
+        /* Move onto next descriptor */
         cr++;
         if (cr >= nr) {
             cr = 0;
@@ -635,7 +629,7 @@ static void hme_transmit(HMEState *s)
         pci_dma_read(d, tb + cr * HME_DESC_SIZE + 4, &buffer, 4);
 
         /* Indicate TX complete */
-        uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
+        intstatus = s->sebregs[HME_SEBI_STAT >> 2];
         intstatus |= HME_SEB_STAT_HOSTTOTX;
         s->sebregs[HME_SEBI_STAT >> 2] = intstatus;
 
@@ -646,7 +640,7 @@ static void hme_transmit(HMEState *s)
     }
     
     /* TX FIFO now clear */
-    uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
+    intstatus = s->sebregs[HME_SEBI_STAT >> 2];
     intstatus |= HME_SEB_STAT_TXALL;
     s->sebregs[HME_SEBI_STAT >> 2] = intstatus;
     hme_update_irq(s);
@@ -708,90 +702,90 @@ static inline void hme_set_rx_ring_nr(HMEState *s, int i)
     s->erxregs[HME_ERXI_RING >> 2] = ring;
 }
 
-/* Inspired by net_checksum_calculate() */
-#if 0
-static uint16_t hme_calculate_rx_checksum(HMEState *s, const uint8_t *data, int length)
+/* FIXME: to remove when other patches upstream */
+#define POLYNOMIAL_LE 0xedb88320
+static uint32_t net_crc32_le(const uint8_t *p, int len)
 {
-    int mac_hdr_len, ip_len;
-    struct ip_header *ip;
+    uint32_t crc;
+    int carry, i, j;
+    uint8_t b;
 
-    /* Ensure we have at least an Eth header */
-    if (length < sizeof(struct eth_header)) {
-        return 0;
-    }
-    
-    /* Handle the optionnal VLAN headers */
-    switch (lduw_be_p(&PKT_GET_ETH_HDR(data)->h_proto)) {
-    case ETH_P_VLAN:
-        mac_hdr_len = sizeof(struct eth_header) +
-                     sizeof(struct vlan_header);
-        break;
-    case ETH_P_DVLAN:
-        if (lduw_be_p(&PKT_GET_VLAN_HDR(data)->h_proto) == ETH_P_VLAN) {
-            mac_hdr_len = sizeof(struct eth_header) +
-                         2 * sizeof(struct vlan_header);
-        } else {
-            mac_hdr_len = sizeof(struct eth_header) +
-                         sizeof(struct vlan_header);
+    crc = 0xffffffff;
+    for (i = 0; i < len; i++) {
+        b = *p++;
+        for (j = 0; j < 8; j++) {
+            carry = (crc & 0x1) ^ (b & 0x01);
+            crc >>= 1;
+            b >>= 1;
+            if (carry) {
+                crc = crc ^ POLYNOMIAL_LE;
+            }
         }
-        break;
-    default:
-        mac_hdr_len = sizeof(struct eth_header);
-        break;
     }
 
-    length -= mac_hdr_len;
-
-    /* Now check we have an IP header (with an optionnal VLAN header) */
-    if (length < sizeof(struct ip_header)) {
-        return 0;
-    }
-
-    ip = (struct ip_header *)(data + mac_hdr_len);
-
-    if (IP_HEADER_VERSION(ip) != IP_HEADER_VERSION_4) {
-        return 0; /* not IPv4 */
-    }
-
-    ip_len = lduw_be_p(&ip->ip_len);
-
-    /* Last, check that we have enough data for the all IP frame */
-    if (length < ip_len) {
-        return 0;
-    }
-
-    ip_len -= IP_HDR_GET_LEN(ip);
-
-    switch (ip->ip_p) {
-    case IP_PROTO_TCP:
-        DPRINTF("   TCP checksum!\n");
-    case IP_PROTO_UDP:
-        DPRINTF("   UDP checksum!\n");
-        return 0;
-    default:
-        /* Can't handle any other protocol */
-        break;
-    }
-    
-    return 0;
+    return crc;
 }
-#endif
 
 #define MIN_BUF_SIZE 60
 
 static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 {
-    DPRINTF("RECEIVED PACKET %zu\n", size);
-
     HMEState *s = qemu_get_nic_opaque(nc);
     PCIDevice *d = PCI_DEVICE(s);
-    dma_addr_t rb, addr, rxoffset;
-    uint32_t status, buffer, buffersize, sum;
+    dma_addr_t rb, addr;
+    uint32_t intstatus, status, buffer, buffersize, sum;
     uint16_t csum;
     uint8_t buf1[60];
-    int nr, cr, len, csum_offset;
+    int nr, cr, len, rxoffset, csum_offset;
 
-    /* if too small buffer, then expand it */
+    trace_hme_rx_incoming(size);
+    
+    /* Do nothing if MAC RX disabled */
+    if (!(s->macregs[HME_MACI_RXCFG >> 2] & HME_MAC_RXCFG_ENABLE)) {
+        return -1;
+    }
+
+    trace_hme_rx_filter_destmac(buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]);
+    
+    /* Check destination MAC address */
+    if (!(s->macregs[HME_MACI_RXCFG >> 2] & HME_MAC_RXCFG_PMISC)) {
+        /* Try and match local MAC address */
+        if (((s->macregs[HME_MACI_MACADDR0 >> 2] & 0xff00) >> 8) == buf[0] &&
+             (s->macregs[HME_MACI_MACADDR0 >> 2] & 0xff) == buf[1] &&
+            ((s->macregs[HME_MACI_MACADDR1 >> 2] & 0xff00) >> 8) == buf[2] &&
+             (s->macregs[HME_MACI_MACADDR1 >> 2] & 0xff) == buf[3] &&
+            ((s->macregs[HME_MACI_MACADDR2 >> 2] & 0xff00) >> 8) == buf[4] &&
+             (s->macregs[HME_MACI_MACADDR2 >> 2] & 0xff) == buf[5]) {
+            /* Matched local MAC address */     
+            trace_hme_rx_filter_local_match();
+        } else if (buf[0] == 0xff && buf[1] == 0xff && buf[2] == 0xff &&
+                   buf[3] == 0xff && buf[4] == 0xff && buf[5] == 0xff) {
+            /* Matched broadcast address */
+            trace_hme_rx_filter_bcast_match();
+        } else if (s->macregs[HME_MACI_RXCFG >> 2] & HME_MAC_RXCFG_HENABLE) {
+            /* Didn't match local address, check hash filter */
+            int mcast_idx = net_crc32_le(buf, 6) >> 26;
+            if (!(s->macregs[(HME_MACI_HASHTAB0 >> 2) - (mcast_idx >> 4)] &
+                    (1 << (mcast_idx & 0xf)))) {
+                /* Didn't match hash filter */
+                trace_hme_rx_filter_hash_nomatch();
+                trace_hme_rx_filter_reject();
+                return 0;
+            } else {
+                trace_hme_rx_filter_hash_match();
+            }
+        } else {
+            /* Not for us */
+            trace_hme_rx_filter_reject();
+            return 0;
+        }
+    } else {
+        trace_hme_rx_filter_promisc_match();
+    }
+
+    trace_hme_rx_filter_accept();
+
+    /* If too small buffer, then expand it */
     if (size < MIN_BUF_SIZE) {
         memcpy(buf1, buf, size);
         memset(buf1 + size, 0, MIN_BUF_SIZE - size);
@@ -802,8 +796,6 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     rb = s->erxregs[HME_ERXI_RING >> 2] & HME_ERXI_RING_ADDR;
     nr = hme_get_rx_ring_count(s);
     cr = hme_get_rx_ring_nr(s);
-    
-    DPRINTF("rb " DMA_ADDR_FMT "  %d  (nr: %d)\n", rb, cr, nr);
 
     pci_dma_read(d, rb + cr * HME_DESC_SIZE, &status, 4);
     pci_dma_read(d, rb + cr * HME_DESC_SIZE + 4, &buffer, 4);
@@ -813,16 +805,17 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
 
     addr = buffer + rxoffset;
     buffersize = (status & HME_XD_RXLENMSK) >> HME_XD_RXLENSHIFT;
-    
+
     /* Detect receive overflow */
     len = size;
     if (size > buffersize) {
         status |= HME_XD_OFL;
         len = buffersize;
     }
-    
-    DPRINTF("desc address " DMA_ADDR_FMT " - status %x with buffersize %d\n", addr, status, buffersize);
+
     pci_dma_write(d, addr, buf, len);
+    
+    trace_hme_rx_desc(buffer, rxoffset, status, len, cr, nr);
     
     /* Calculate the receive checksum */
     csum_offset = (s->erxregs[HME_ERXI_CFG >> 2] & HME_ERX_CFG_CSUMSTART) >>
@@ -830,17 +823,15 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     sum = 0;
     sum += net_checksum_add(len - csum_offset, (uint8_t *)buf + csum_offset);
     csum = net_checksum_finish(sum);
-    
-    DPRINTF("  csum_offset: %d  buf: %p  buf_start: %p\n", csum_offset, buf, buf + csum_offset);
-    
+
+    trace_hme_rx_xsum_calc(csum);
+
     /* Update status */
     status &= ~HME_XD_OWN;
     status &= ~HME_XD_RXLENMSK;
     status |= len << HME_XD_RXLENSHIFT;
     status &= ~HME_XD_RXCKSUM;
     status |= csum;
-
-    DPRINTF("status is now %x\n", status);
     
     pci_dma_write(d, rb + cr * HME_DESC_SIZE, &status, 4);
 
@@ -852,7 +843,7 @@ static ssize_t hme_receive(NetClientState *nc, const uint8_t *buf, size_t size)
     hme_set_rx_ring_nr(s, cr);
     
     /* Indicate RX complete */
-    uint32_t intstatus = s->sebregs[HME_SEBI_STAT >> 2];
+    intstatus = s->sebregs[HME_SEBI_STAT >> 2];
     intstatus |= HME_SEB_STAT_RXTOHOST;
     s->sebregs[HME_SEBI_STAT >> 2] = intstatus;
 
@@ -905,29 +896,20 @@ static void hme_realize(PCIDevice *pci_dev, Error **errp)
     s->nic = qemu_new_nic(&net_hme_info, &s->conf,
                           object_get_typename(OBJECT(d)), d->id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
-    
-    return;
-}
-
-static void hme_exit(PCIDevice *pci_dev)
-{
-    printf("hme_exit!\n");
-
-    return;
 }
 
 static void hme_instance_init(Object *obj)
 {
-    printf("hme_instance_init!\n");
+    HMEState *s = HME(obj);
 
-    return;
+    device_add_bootindex_property(obj, &s->conf.bootindex,
+                                  "bootindex", "/ethernet-phy@0",
+                                  DEVICE(obj), NULL);
 }
 
 static void hme_reset(DeviceState *ds)
 {
     HMEState *s = HME(ds);
-    
-    printf("hme reset!\n");
 
     /* Configure internal transceiver */
     s->mifregs[HME_MIFI_CFG >> 2] |= HME_MIF_CFG_MDI0;
@@ -956,7 +938,6 @@ static void hme_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->realize = hme_realize;
-    k->exit = hme_exit;
     k->vendor_id = PCI_VENDOR_ID_SUN;
     k->device_id = PCI_DEVICE_ID_SUN_HME;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
