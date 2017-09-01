@@ -33,7 +33,6 @@ typedef struct {
     MemoryRegion mac;
     MemoryRegion mif;
     MemoryRegion pcs;
-    MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
     uint32_t nregsblocks;
@@ -797,56 +796,6 @@ static uint32_t sungem_mii_op(SunGEMState *s, uint32_t val)
     return 0xffff | MIF_FRAME_TALSB;
 }
 
-static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
-                              unsigned size)
-{
-    SunGEMState *s = opaque;
-    uint32_t *regp;
-
-    /* Drop writes to PROM image */
-    if (addr > PROM_START) {
-        return;
-    }
-
-    regp = sungem_get_reg(s, addr);
-    if (!regp) {
-        trace_sungem_mmio_write_unknown(addr);
-        return;
-    }
-
-    trace_sungem_mmio_write(addr, val);
-
-    /* Pre-write filter */
-    switch (addr) {
-    }
-
-    *regp = val;
-}
-
-static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
-{
-    SunGEMState *s = opaque;
-    uint32_t val, *regp;
-
-    /* No PROM image to read for now... */
-    if (addr > PROM_START) {
-        return 0xffffffff;
-    }
-
-    regp = sungem_get_reg(s, addr);
-    if (!regp) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown register 0x%04x\n",
-                      (unsigned int)addr);
-        return 0;
-    }
-    val = *regp;
-
-    trace_sungem_mmio_read(addr, val);
-
-    return val;
-}
-
 static void sungem_mmio_greg_write(void *opaque, hwaddr addr, uint64_t val,
                                    unsigned size)
 {
@@ -1335,18 +1284,6 @@ static void sungem_init_regs(SunGEMState *s)
     sungem_reset_all(s, true);
 }
 
-/* PCI interface */
-
-static const MemoryRegionOps sungem_mmio_ops = {
-    .read = sungem_mmio_read,
-    .write = sungem_mmio_write,
-    .endianness = DEVICE_LITTLE_ENDIAN,
-    .impl = {
-        .min_access_size = 4,
-        .max_access_size = 4,
-    },
-};
-
 static void sungem_uninit(PCIDevice *dev)
 {
     SunGEMState *s = SUNGEM(dev);
@@ -1387,31 +1324,27 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
 
     memory_region_init_io(&s->greg, OBJECT(s), &sungem_mmio_greg_ops, s,
                           "sungem.greg", SUNGEM_MMIO_GREG_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0, &s->greg, 1);
+    memory_region_add_subregion(&s->sungem, 0, &s->greg);
 
     memory_region_init_io(&s->txdma, OBJECT(s), &sungem_mmio_txdma_ops, s,
                           "sungem.txdma", SUNGEM_MMIO_TXDMA_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0x2000, &s->txdma, 1);
+    memory_region_add_subregion(&s->sungem, 0x2000, &s->txdma);
 
     memory_region_init_io(&s->rxdma, OBJECT(s), &sungem_mmio_rxdma_ops, s,
                           "sungem.rxdma", SUNGEM_MMIO_RXDMA_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0x4000, &s->rxdma, 1);
+    memory_region_add_subregion(&s->sungem, 0x4000, &s->rxdma);
 
     memory_region_init_io(&s->mac, OBJECT(s), &sungem_mmio_mac_ops, s,
                           "sungem.mac", SUNGEM_MMIO_MAC_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0x6000, &s->mac, 1);
+    memory_region_add_subregion(&s->sungem, 0x6000, &s->mac);
 
     memory_region_init_io(&s->mif, OBJECT(s), &sungem_mmio_mif_ops, s,
                           "sungem.mif", SUNGEM_MMIO_MIF_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0x6200, &s->mif, 1);
+    memory_region_add_subregion(&s->sungem, 0x6200, &s->mif);
 
     memory_region_init_io(&s->pcs, OBJECT(s), &sungem_mmio_pcs_ops, s,
                           "sungem.pcs", SUNGEM_MMIO_PCS_SIZE);
-    memory_region_add_subregion_overlap(&s->sungem, 0x9000, &s->pcs, 1);
-
-    memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
-                          "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);
-    memory_region_add_subregion(&s->sungem, 0, &s->mmio);
+    memory_region_add_subregion(&s->sungem, 0x9000, &s->pcs);
 
     pci_register_bar(pci_dev, 0, 0, &s->sungem);
 
