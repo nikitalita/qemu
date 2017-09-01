@@ -11,29 +11,11 @@
 #include "net/net.h"
 #include "net/checksum.h"
 #include "hw/net/mii.h"
+#include "trace.h"
 /* For crc32 */
 #include <zlib.h>
 
 #include "sungem.h"
-
-#define SUNGEM_DEBUG
-
-#ifdef SUNGEM_DEBUG
-enum {
-        DEBUG_ERR, DEBUG_GEN, DEBUG_MII, DEBUG_MMIO, DEBUG_INTERRUPT,
-        DEBUG_RX, DEBUG_TX,
-};
-#define DBGBIT(x)    (1<<DEBUG_##x)
-static int debugflags = DBGBIT(ERR);
-
-#define DBGOUT(what, fmt, ...) do {                             \
-    if (debugflags & DBGBIT(what)) {                            \
-        fprintf(stderr, "sungem: " fmt, ## __VA_ARGS__);        \
-    }                                                           \
-} while (0)
-#else
-#define DBGOUT(what, fmt, ...) do {} while (0)
-#endif
 
 #define TYPE_SUNGEM "sungem"
 
@@ -185,11 +167,10 @@ static void sungem_do_tx_csum(SunGEMState *s)
     start = (s->tx_first_ctl & TXDCTRL_CSTART) >> 15;
     off = (s->tx_first_ctl & TXDCTRL_COFF) >> 21;
 
-    DBGOUT(TX, "TX checksumming from byte %d, inserting at %d\n",
-           start, off);
+    trace_sungem_tx_checksum(start, off);
 
     if (start > (s->tx_size - 2) || off > (s->tx_size - 2)) {
-        DBGOUT(ERR, "TX checksum out of packet bounds\n");
+        trace_sungem_tx_checksum_oob();
         return;
     }
 
@@ -220,8 +201,7 @@ static void sungem_process_tx_desc(SunGEMState *s, struct gem_txd *desc)
      */
     if (desc->control_word & TXDCTRL_SOF) {
         if (s->tx_first_ctl) {
-            DBGOUT(ERR, "TX packet started without finishing"
-                   " the previous one !\n");
+            trace_sungem_tx_unfinished();
         }
         s->tx_size = 0;
         s->tx_first_ctl = desc->control_word;
@@ -232,7 +212,7 @@ static void sungem_process_tx_desc(SunGEMState *s, struct gem_txd *desc)
 
     /* Clamp it to our max size */
     if ((s->tx_size + len) > MAX_PACKET_SIZE) {
-        DBGOUT(ERR, "TX packet queue overflow !\n");
+        trace_sungem_tx_overflow();
         len = MAX_PACKET_SIZE - s->tx_size;
     }
 
@@ -242,7 +222,7 @@ static void sungem_process_tx_desc(SunGEMState *s, struct gem_txd *desc)
 
     /* If end of frame, send packet */
     if (desc->control_word & TXDCTRL_EOF) {
-        DBGOUT(TX, "TX completing %d bytes packet\n", s->tx_size);
+        trace_sungem_tx_finished(s->tx_size);
 
         /* Handle csum */
         if (s->tx_first_ctl & TXDCTRL_CENAB) {
@@ -265,7 +245,7 @@ static void sungem_tx_kick(SunGEMState *s)
     uint32_t txdma_cfg, txmac_cfg, ints;
     uint64_t dbase;
 
-    DBGOUT(TX, "TX Kick !...\n");
+    trace_sungem_tx_kick();
 
     /* Check that both TX MAC and TX DMA are enabled. We don't
      * handle DMA-less direct FIFO operations (we don't emulate
@@ -278,7 +258,7 @@ static void sungem_tx_kick(SunGEMState *s)
     txmac_cfg = GET_REG(s, MAC_TXCFG);
     if (!(txdma_cfg & TXDMA_CFG_ENABLE) ||
         !(txmac_cfg & MAC_TXCFG_ENAB)) {
-        DBGOUT(TX, "TX not enabled !\n");
+        trace_sungem_tx_disabled();
         return;
     }
 
@@ -291,8 +271,7 @@ static void sungem_tx_kick(SunGEMState *s)
     comp = GET_REG(s, TXDMA_TXDONE) & s->tx_mask;
     kick = GET_REG(s, TXDMA_KICK) & s->tx_mask;
 
-    DBGOUT(TX, "TX processing comp=%d, kick=%d out of %d\n",
-           comp, kick, s->tx_mask + 1);
+    trace_sungem_tx_process(comp, kick, s->tx_mask + 1);
 
     /* This is rather primitive for now, we just send everything we
      * can in one go, like e1000. Ideally we should do the sending
@@ -307,9 +286,7 @@ static void sungem_tx_kick(SunGEMState *s)
         /* Byteswap descriptor */
         desc.control_word = le64_to_cpu(desc.control_word);
         desc.buffer = le64_to_cpu(desc.buffer);
-        DBGOUT(TX, "TX desc %d: %016llx %016llx\n", comp,
-               (unsigned long long)desc.control_word,
-               (unsigned long long)desc.buffer);
+        trace_sungem_tx_desc(comp, desc.control_word, desc.buffer);
 
         /* Send it for processing */
         sungem_process_tx_desc(s, &desc);
@@ -346,11 +323,11 @@ static int sungem_can_receive(NetClientState *nc)
 
     /* If MAC disabled, can't receive */
     if ((rxmac_cfg & MAC_RXCFG_ENAB) == 0) {
-        DBGOUT(RX, "Check RX MAC disabled\n");
+        trace_sungem_rx_mac_disabled();
         return 0;
     }
     if ((rxdma_cfg & RXDMA_CFG_ENABLE) == 0) {
-        DBGOUT(RX, "Check RX TXDMA disabled\n");
+        trace_sungem_rx_txdma_disabled();
         return 0;
     }
 
@@ -359,8 +336,7 @@ static int sungem_can_receive(NetClientState *nc)
     done = GET_REG(s, RXDMA_DONE);
     full = sungem_rx_full(s, kick, done);
 
-    DBGOUT(RX, "Check RX %d (kick=%d, done=%d)\n",
-           !full, kick, done);
+    trace_sungem_rx_check(!full, kick, done);
 
     return !full;
 }
@@ -390,7 +366,7 @@ static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
     mac1 = (mac[2] << 8) | mac[3];
     mac2 = (mac[0] << 8) | mac[1];
 
-    DBGOUT(RX, "Word MAC: %04x %04x %04x\n", mac0, mac1, mac2);
+    trace_sungem_rx_mac_check(mac0, mac1, mac2);
 
     /* Is this a broadcast frame ? */
     if (mac0 == 0xffff && mac1 == 0xffff && mac2 == 0xffff) {
@@ -401,7 +377,7 @@ static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
 
     /* Is this a multicast frame ? */
     if (mac[0] & 1) {
-        DBGOUT(RX, "Multicast !\n");
+        trace_sungem_rx_mac_multicast();
 
         /* Promisc group enabled ? */
         if (rxcfg & MAC_RXCFG_PGRP) {
@@ -425,10 +401,8 @@ static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
     }
 
     /* Main MAC check */
-    DBGOUT(RX, "Compare MAC to %04x %04x %04x..\n",
-           GET_REG(s, MAC_ADDR0),
-           GET_REG(s, MAC_ADDR1),
-           GET_REG(s, MAC_ADDR2));
+    trace_sungem_rx_mac_compare(GET_REG(s, MAC_ADDR0), GET_REG(s, MAC_ADDR1),
+                                GET_REG(s, MAC_ADDR2));
     if (mac0 == GET_REG(s, MAC_ADDR0) &&
         mac1 == GET_REG(s, MAC_ADDR1) &&
         mac2 == GET_REG(s, MAC_ADDR2)) {
@@ -457,7 +431,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     uint64_t dbase, baddr;
     unsigned int rx_cond;
 
-    DBGOUT(RX, "RX got %ld bytes packet\n", size);
+    trace_sungem_rx_packet(size);
 
     rxmac_cfg = GET_REG(s, MAC_RXCFG);
     rxdma_cfg = GET_REG(s, RXDMA_CFG);
@@ -466,7 +440,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     /* If MAC or DMA disabled, can't receive */
     if (!(rxdma_cfg & RXDMA_CFG_ENABLE) ||
         !(rxmac_cfg & MAC_RXCFG_ENAB)) {
-        DBGOUT(RX, "RX not enabled !\n");
+        trace_sungem_rx_disabled();
         return 0;
     }
 
@@ -481,7 +455,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
      * (when accounting for FCS)
      */
     if (size < 6 || (size + 4) > max_fsize) {
-        DBGOUT(ERR, "RX bad frame size %ld, dropped !\n", size);
+        trace_sungem_rx_bad_frame_size(size);
         /* XXX Increment error statistics ? */
         return size;
     }
@@ -506,7 +480,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     rx_cond = sungem_check_rx_mac(s, buf, mac_crc);
     if (rx_cond == rx_no_match) {
         /* Just drop it */
-        DBGOUT(RX, "No match, dropped !\n");
+        trace_sungem_rx_unmatched();
         return size;
     }
 
@@ -514,12 +488,11 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     kick = GET_REG(s, RXDMA_KICK) & s->rx_mask;
     done = GET_REG(s, RXDMA_DONE) & s->rx_mask;
 
-    DBGOUT(RX, "RX processing done=%d, kick=%d out of %d\n",
-           done, kick, s->rx_mask + 1);
+    trace_sungem_rx_process(done, kick, s->rx_mask + 1);
 
     /* Ring full ? Can't receive */
     if (sungem_rx_full(s, kick, done)) {
-        DBGOUT(RX, "RX ring full !\n");
+        trace_sungem_rx_ringfull();
         return 0;
     }
 
@@ -534,9 +507,8 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     /* Read the next descriptor */
     pci_dma_read(d, dbase + done * sizeof(desc), &desc, sizeof(desc));
 
-    DBGOUT(RX, "RX desc: %016llx %016llx\n",
-           (unsigned long long)le64_to_cpu(desc.status_word),
-           (unsigned long long)le64_to_cpu(desc.buffer));
+    trace_sungem_rx_desc(le64_to_cpu(desc.status_word),
+                         le64_to_cpu(desc.buffer));
 
     /* Effective buffer address */
     baddr = le64_to_cpu(desc.buffer) & ~7ull;
@@ -606,7 +578,7 @@ static void sungem_update_masks(SunGEMState *s)
 
 static void sungem_reset_rx(SunGEMState *s)
 {
-    DBGOUT(GEN, "RX reset\n");
+    trace_sungem_rx_reset();
 
     /* XXX Do RXCFG */
     /* XXX Check value */
@@ -622,7 +594,7 @@ static void sungem_reset_rx(SunGEMState *s)
 
 static void sungem_reset_tx(SunGEMState *s)
 {
-    DBGOUT(GEN, "TX reset\n");
+    trace_sungem_tx_reset();
 
     /* XXX Do TXCFG */
     /* XXX Check value */
@@ -639,7 +611,7 @@ static void sungem_reset_tx(SunGEMState *s)
 
 static void sungem_reset_all(SunGEMState *s, bool pci_reset)
 {
-    DBGOUT(GEN, "Full reset (PCI:%d)\n", pci_reset);
+    trace_sungem_reset(pci_reset);
 
     sungem_reset_rx(s);
     sungem_reset_tx(s);
@@ -662,8 +634,7 @@ static void sungem_reset_all(SunGEMState *s, bool pci_reset)
 static void sungem_mii_write(SunGEMState *s, uint8_t phy_addr,
                              uint8_t reg_addr, uint16_t val)
 {
-    DBGOUT(MII, "MII write addr %x reg %02x val %04x\n",
-           phy_addr, reg_addr, val);
+    trace_sungem_mii_write(phy_addr, reg_addr, val);
 
     /* XXX TODO */
 }
@@ -707,8 +678,7 @@ static uint16_t sungem_mii_read(SunGEMState *s, uint8_t phy_addr,
 
     val = __sungem_mii_read(s, phy_addr, reg_addr);
 
-    DBGOUT(MII, "MII read addr %x reg %02x val %04x\n",
-           phy_addr, reg_addr, val);
+    trace_sungem_mii_read(phy_addr, reg_addr, val);
 
     return val;
 }
@@ -719,7 +689,7 @@ static uint32_t sungem_mii_op(SunGEMState *s, uint32_t val)
 
     /* Ignore not start of frame */
     if ((val >> 30) != 1) {
-        DBGOUT(ERR, "MII op, invalid SOF field %x\n", val >> 30);
+        trace_sungem_mii_invalid_sof(val >> 30);
         return 0xffff;
     }
     phy_addr = (val & MIF_FRAME_PHYAD) >> 23;
@@ -732,7 +702,7 @@ static uint32_t sungem_mii_op(SunGEMState *s, uint32_t val)
     case 2:
         return sungem_mii_read(s, phy_addr, reg_addr) | MIF_FRAME_TALSB;
     default:
-        DBGOUT(ERR, "MII op, invalid op field %x\n", op);
+        trace_sungem_mii_invalid_op(op);
     }
     return 0xffff | MIF_FRAME_TALSB;
 }
@@ -750,13 +720,11 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
 
     regp = sungem_get_reg(s, addr);
     if (!regp) {
-        DBGOUT(ERR, "MMIO write to unknown register 0x%04x\n",
-               (unsigned int)addr);
+        trace_sungem_mmio_write_unknown(addr);
         return;
     }
 
-    DBGOUT(MMIO, "MMIO write to %04x val=%08x\n",
-           (uint32_t)addr, (uint32_t)val);
+    trace_sungem_mmio_write(addr, val);
 
     /* Pre-write filter */
     switch (addr) {
@@ -843,8 +811,8 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         *regp = sungem_mii_op(s, val);
         break;
     case RXDMA_KICK:
-            DBGOUT(TX, "RXDMA_KICK written to %d\n", (int)val);
-         /* Through */
+        trace_sungem_mmio_write_rx_kick(val);
+        /* Through */
     case MAC_RXCFG:
     case RXDMA_CFG:
         sungem_update_masks(s);
@@ -877,7 +845,7 @@ static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
     }
     val = *regp;
 
-    DBGOUT(MMIO, "MMIO read from %04x val=%08x\n", (uint32_t)addr, val);
+    trace_sungem_mmio_read(addr, val);
 
     switch (addr) {
     case GREG_STAT:
