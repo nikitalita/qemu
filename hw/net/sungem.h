@@ -13,17 +13,17 @@
 //#define SUNGEM_MMIO_SIZE        0x200000
 
 /* Global Registers */
-#define GREG_SEBSTATE	0x0000UL	/* SEB State Register		*/
-#define GREG_CFG	0x0004UL	/* Configuration Register	*/
-#define GREG_STAT	0x000CUL	/* Status Register		*/
-#define GREG_IMASK	0x0010UL	/* Interrupt Mask Register	*/
-#define GREG_IACK	0x0014UL	/* Interrupt ACK Register	*/
-#define GREG_STAT2	0x001CUL	/* Alias of GREG_STAT		*/
-#define GREG_PCIESTAT	0x1000UL	/* PCI Error Status Register	*/
-#define GREG_PCIEMASK	0x1004UL	/* PCI Error Mask Register	*/
-#define GREG_BIFCFG	0x1008UL	/* BIF Configuration Register	*/
-#define GREG_BIFDIAG	0x100CUL	/* BIF Diagnostics Register	*/
-#define GREG_SWRST	0x1010UL	/* Software Reset Register	*/
+//#define GREG_SEBSTATE	0x0000UL	/* SEB State Register		*/
+//#define GREG_CFG	0x0004UL	/* Configuration Register	*/
+//#define GREG_STAT	0x000CUL	/* Status Register		*/
+//#define GREG_IMASK	0x0010UL	/* Interrupt Mask Register	*/
+//#define GREG_IACK	0x0014UL	/* Interrupt ACK Register	*/
+//#define GREG_STAT2	0x001CUL	/* Alias of GREG_STAT		*/
+//#define GREG_PCIESTAT	0x1000UL	/* PCI Error Status Register	*/
+//#define GREG_PCIEMASK	0x1004UL	/* PCI Error Mask Register	*/
+//#define GREG_BIFCFG	0x1008UL	/* BIF Configuration Register	*/
+//#define GREG_BIFDIAG	0x100CUL	/* BIF Diagnostics Register	*/
+//#define GREG_SWRST	0x1010UL	/* Software Reset Register	*/
 
 /* Global SEB State Register */
 #define GREG_SEBSTATE_ARB	0x00000003	/* State of Arbiter		*/

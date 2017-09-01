@@ -27,6 +27,7 @@ typedef struct {
     PCIDevice pdev;
 
     MemoryRegion sungem;
+    MemoryRegion greg;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -45,6 +46,18 @@ typedef struct {
 } SunGEMState;
 
 #define SUNGEM_MMIO_SIZE        0x200000
+
+/* Global registers */
+#define SUNGEM_MMIO_GREG_SIZE   0x2000
+#define GREG_SEBSTATE     0x0000UL    /* SEB State Register */
+#define GREG_STAT         0x000CUL    /* Status Register */
+#define GREG_IMASK        0x0010UL    /* Interrupt Mask Register */
+#define GREG_IACK         0x0014UL    /* Interrupt ACK Register */
+#define GREG_STAT2        0x001CUL    /* Alias of GREG_STAT */
+#define GREG_PCIESTAT     0x1000UL    /* PCI Error Status Register */
+#define GREG_PCIEMASK     0x1004UL    /* PCI Error Mask Register */
+#define GREG_SWRST        0x1010UL    /* Software Reset Register */
+
 
 static const struct RegBlock {
     uint32_t base;      /* Base offset */
@@ -733,10 +746,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     /* Pre-write filter */
     switch (addr) {
     /* Read only registers */
-    case GREG_SEBSTATE:
-    case GREG_STAT:
-    case GREG_STAT2:
-    case GREG_PCIESTAT:
     case TXDMA_TXDONE:
     case TXDMA_PCNT:
     case TXDMA_SMACHINE:
@@ -764,14 +773,7 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     case PCS_ISTAT:
     case PCS_SSTATE:
         return; /* No actual write */
-    case GREG_IACK:
-        val &= GREG_STAT_LATCH;
-        SET_REG(s, GREG_STAT, GET_REG(s, GREG_STAT) & ~val);
-        sungem_eval_irq(s);
-        return; /* No actual write */
-    case GREG_PCIEMASK:
-        val &= 0x7;
-        break;
+
     case MIF_CFG:
         /* Maintain the RO MDI bits to advertize an MDIO PHY on MDI0 */
         val &= ~MIF_CFG_MDI1;
@@ -787,26 +789,10 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
 
     /* Post write action */
     switch (addr) {
-    case GREG_IMASK:
-        /* Re-evaluate interrupt */
-        sungem_eval_irq(s);
-        break;
     case MAC_TXMASK:
     case MAC_RXMASK:
     case MAC_MCMASK:
         sungem_eval_cascade_irq(s);
-        break;
-    case GREG_SWRST:
-        switch (val & (GREG_SWRST_TXRST | GREG_SWRST_RXRST)) {
-        case GREG_SWRST_RXRST:
-            sungem_reset_rx(s);
-            break;
-        case GREG_SWRST_TXRST:
-            sungem_reset_tx(s);
-            break;
-        case GREG_SWRST_RXRST | GREG_SWRST_TXRST:
-            sungem_reset_all(s, false);
-        }
         break;
     case TXDMA_KICK:
         sungem_tx_kick(s);
@@ -852,21 +838,6 @@ static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
     trace_sungem_mmio_read(addr, val);
 
     switch (addr) {
-    case GREG_STAT:
-        /* Side effect, clear bottom 7 bits */
-        *regp = val & ~GREG_STAT_LATCH;
-        sungem_eval_irq(s);
-
-        /* Inject TX completion in returned value */
-        val = (val & ~GREG_STAT_TXNR) |
-                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
-        break;
-    case GREG_STAT2:
-        /* Return the status reg without side effect
-         * (and inject TX completion in returned value)
-         */
-        return (GET_REG(s, GREG_STAT) & ~GREG_STAT_TXNR) |
-                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
     case MAC_TXSTAT:
         *regp = 0; /* Side effect, clear all */
         sungem_update_status(s, GREG_STAT_TXMAC, false);
@@ -883,6 +854,110 @@ static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
 
     return val;
 }
+
+static void sungem_mmio_greg_write(void *opaque, hwaddr addr, uint64_t val,
+                                   unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown GREG register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_greg_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case GREG_SEBSTATE:
+    case GREG_STAT:
+    case GREG_STAT2:
+    case GREG_PCIESTAT:
+        return; /* No actual write */
+    case GREG_IACK:
+        val &= GREG_STAT_LATCH;
+        SET_REG(s, GREG_STAT, GET_REG(s, GREG_STAT) & ~val);
+        sungem_eval_irq(s);
+        return; /* No actual write */
+    case GREG_PCIEMASK:
+        val &= 0x7;
+        break;
+    }
+    
+    *regp = val;
+    
+    /* Post write action */
+    switch (addr) {
+    case GREG_IMASK:
+        /* Re-evaluate interrupt */
+        sungem_eval_irq(s);
+        break;
+    case GREG_SWRST:
+        switch (val & (GREG_SWRST_TXRST | GREG_SWRST_RXRST)) {
+        case GREG_SWRST_RXRST:
+            sungem_reset_rx(s);
+            break;
+        case GREG_SWRST_TXRST:
+            sungem_reset_tx(s);
+            break;
+        case GREG_SWRST_RXRST | GREG_SWRST_TXRST:
+            sungem_reset_all(s, false);
+        }
+        break;
+    }
+}
+
+static uint64_t sungem_mmio_greg_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown GREG register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+    val = *regp;
+
+    trace_sungem_mmio_greg_read(addr, val);
+
+    switch (addr) {
+    case GREG_STAT:
+        /* Side effect, clear bottom 7 bits */
+        *regp = val & ~GREG_STAT_LATCH;
+        sungem_eval_irq(s);
+
+        /* Inject TX completion in returned value */
+        val = (val & ~GREG_STAT_TXNR) |
+                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
+        break;
+    case GREG_STAT2:
+        /* Return the status reg without side effect
+         * (and inject TX completion in returned value)
+         */
+        return (GET_REG(s, GREG_STAT) & ~GREG_STAT_TXNR) |
+                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
+    }
+
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_greg_ops = {
+    .read = sungem_mmio_greg_read,
+    .write = sungem_mmio_greg_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
 
 static void sungem_init_regs(SunGEMState *s)
 {
@@ -946,8 +1021,12 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     sungem_init_regs(s);
     memory_region_init(&s->sungem, OBJECT(s), "sungem", SUNGEM_MMIO_SIZE);
 
+    memory_region_init_io(&s->greg, OBJECT(s), &sungem_mmio_greg_ops, s,
+                          "sungem.greg", SUNGEM_MMIO_GREG_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0, &s->greg, 1);
+    
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
-                          "sungem.mmio", SUNGEM_MMIO_SIZE);
+                          "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);
     memory_region_add_subregion(&s->sungem, 0, &s->mmio);
 
     pci_register_bar(pci_dev, 0, 0, &s->sungem);

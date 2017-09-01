@@ -313,3 +313,5 @@ sungem_mmio_write_unknown(hwaddr addr) "MMIO write to unknown register 0x%"HWADD
 sungem_mmio_write(hwaddr addr, uint64_t val) "MMIO write to %"HWADDR_PRIx" val=%"PRIx64
 sungem_mmio_write_rx_kick(uint64_t val) "RXDMA_KICK written to %"PRIu64
 sungem_mmio_read(hwaddr addr, uint64_t val) "MMIO read from %"PRIx64" val=%"PRIx64
+sungem_mmio_greg_write(hwaddr addr, uint64_t val) "MMIO greg write to %"HWADDR_PRIx" val=%"PRIx64
+sungem_mmio_greg_read(hwaddr addr, uint64_t val) "MMIO greg read from %"PRIx64" val=%"PRIx64
