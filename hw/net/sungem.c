@@ -15,8 +15,6 @@
 /* For crc32 */
 #include <zlib.h>
 
-#include "sungem.h"
-
 #define TYPE_SUNGEM "sungem"
 
 #define SUNGEM(obj) OBJECT_CHECK(SunGEMState, (obj), TYPE_SUNGEM)
@@ -53,19 +51,50 @@ typedef struct {
 
 /* Global registers */
 #define SUNGEM_MMIO_GREG_SIZE   0x2000
+
 #define GREG_SEBSTATE     0x0000UL    /* SEB State Register */
+
 #define GREG_STAT         0x000CUL    /* Status Register */
+#define GREG_STAT_TXINTME     0x00000001    /* TX INTME frame transferred */
+#define GREG_STAT_TXALL	      0x00000002    /* All TX frames transferred */
+#define GREG_STAT_TXDONE      0x00000004    /* One TX frame transferred */
+#define GREG_STAT_RXDONE      0x00000010    /* One RX frame arrived */
+#define GREG_STAT_RXNOBUF     0x00000020    /* No free RX buffers available */
+#define GREG_STAT_RXTAGERR    0x00000040    /* RX tag framing is corrupt */
+#define GREG_STAT_TXMAC       0x00004000    /* TX MAC signalled interrupt */
+#define GREG_STAT_RXMAC       0x00008000    /* RX MAC signalled interrupt */
+#define GREG_STAT_MAC         0x00010000    /* MAC Control signalled irq */
+#define GREG_STAT_TXNR        0xfff80000    /* == TXDMA_TXDONE reg val */
+#define GREG_STAT_TXNR_SHIFT  19
+
+/* These interrupts are edge latches in the status register,
+ * reading it (or writing the corresponding bit in IACK) will
+ * clear them
+ */
+#define GREG_STAT_LATCH       (GREG_STAT_TXALL  | GREG_STAT_TXINTME | \
+                               GREG_STAT_RXDONE | GREG_STAT_RXDONE |  \
+                               GREG_STAT_RXNOBUF | GREG_STAT_RXTAGERR)
+
 #define GREG_IMASK        0x0010UL    /* Interrupt Mask Register */
 #define GREG_IACK         0x0014UL    /* Interrupt ACK Register */
 #define GREG_STAT2        0x001CUL    /* Alias of GREG_STAT */
 #define GREG_PCIESTAT     0x1000UL    /* PCI Error Status Register */
 #define GREG_PCIEMASK     0x1004UL    /* PCI Error Mask Register */
+
 #define GREG_SWRST        0x1010UL    /* Software Reset Register */
+#define GREG_SWRST_TXRST      0x00000001    /* TX Software Reset */
+#define GREG_SWRST_RXRST      0x00000002    /* RX Software Reset */
+#define GREG_SWRST_RSTOUT     0x00000004    /* Force RST# pin active */
 
 /* TX DMA Registers */
 #define SUNGEM_MMIO_TXDMA_SIZE   0x1000
+
 #define TXDMA_KICK        0x0000UL    /* TX Kick Register */
+
 #define TXDMA_CFG         0x0004UL    /* TX Configuration Register */
+#define TXDMA_CFG_ENABLE      0x00000001    /* Enable TX DMA channel */
+#define TXDMA_CFG_RINGSZ      0x0000001e    /* TX descriptor ring size */
+
 #define TXDMA_DBLOW       0x0008UL    /* TX Desc. Base Low */
 #define TXDMA_DBHI        0x000CUL    /* TX Desc. Base High */
 #define TXDMA_PCNT        0x0024UL    /* TX FIFO Packet Counter	*/
@@ -78,7 +107,13 @@ typedef struct {
 
 /* Receive DMA Registers */
 #define SUNGEM_MMIO_RXDMA_SIZE   0x2000
+
 #define RXDMA_CFG         0x0000UL    /* RX Configuration Register */
+#define RXDMA_CFG_ENABLE      0x00000001    /* Enable RX DMA channel */
+#define RXDMA_CFG_RINGSZ      0x0000001e    /* RX descriptor ring size	*/
+#define RXDMA_CFG_FBOFF       0x00001c00    /* Offset of first data byte */
+#define RXDMA_CFG_CSUMOFF     0x000fe000    /* Skip bytes before csum calc */
+
 #define RXDMA_DBLOW       0x0004UL    /* RX Descriptor Base Low */
 #define RXDMA_DBHI        0x0008UL    /* RX Descriptor Base High */
 #define RXDMA_PCNT        0x0018UL    /* RX FIFO Packet Counter */
@@ -94,17 +129,32 @@ typedef struct {
 
 /* MAC Registers */
 #define SUNGEM_MMIO_MAC_SIZE   0x200
+
 #define MAC_TXRST         0x0000UL    /* TX MAC Software Reset Command */
 #define MAC_RXRST         0x0004UL    /* RX MAC Software Reset Command */
 #define MAC_TXSTAT        0x0010UL    /* TX MAC Status Register */
 #define MAC_RXSTAT        0x0014UL    /* RX MAC Status Register */
+
 #define MAC_CSTAT         0x0018UL    /* MAC Control Status Register */
+#define MAC_CSTAT_PTR         0xffff0000    /* Pause Time Received */
+
 #define MAC_TXMASK        0x0020UL    /* TX MAC Mask Register */
 #define MAC_RXMASK        0x0024UL    /* RX MAC Mask Register */
 #define MAC_MCMASK        0x0028UL    /* MAC Control Mask Register */
+
 #define MAC_TXCFG         0x0030UL    /* TX MAC Configuration Register */
+#define MAC_TXCFG_ENAB        0x00000001    /* TX MAC Enable */
+
 #define MAC_RXCFG         0x0034UL    /* RX MAC Configuration Register */
+#define MAC_RXCFG_ENAB        0x00000001    /* RX MAC Enable */
+#define MAC_RXCFG_SFCS        0x00000004    /* Strip FCS */
+#define MAC_RXCFG_PROM        0x00000008    /* Promiscuous Mode */
+#define MAC_RXCFG_PGRP        0x00000010    /* Promiscuous Group */
+#define MAC_RXCFG_HFE         0x00000020    /* Hash Filter Enable */
+
 #define MAC_XIFCFG        0x003CUL    /* XIF Configuration Register */
+#define MAC_XIFCFG_LBCK       0x00000002    /* Loopback TX to RX */
+
 #define MAC_MINFSZ        0x0050UL    /* MinFrameSize Register */
 #define MAC_MAXFSZ        0x0054UL    /* MaxFrameSize Register */
 #define MAC_ADDR0         0x0080UL    /* MAC Address 0 Register */
@@ -119,8 +169,18 @@ typedef struct {
 
 /* MIF Registers */
 #define SUNGEM_MMIO_MIF_SIZE   0x20
+
 #define MIF_FRAME         0x000CUL    /* MIF Frame/Output Register */
+#define MIF_FRAME_OP          0x30000000    /* OPcode */
+#define MIF_FRAME_PHYAD       0x0f800000    /* PHY ADdress */
+#define MIF_FRAME_REGAD       0x007c0000    /* REGister ADdress */
+#define MIF_FRAME_TALSB       0x00010000    /* Turn Around LSB */
+#define MIF_FRAME_DATA        0x0000ffff    /* Instruction Payload */
+
 #define MIF_CFG	          0x0010UL    /* MIF Configuration Register */
+#define MIF_CFG_MDI0          0x00000100    /* MDIO_0 present or read-bit */
+#define MIF_CFG_MDI1          0x00000200    /* MDIO_1 present or read-bit */
+
 #define MIF_STATUS        0x0018UL    /* MIF Status Register */
 #define MIF_SMACHINE      0x001CUL    /* MIF State Machine Register */
 
@@ -129,6 +189,28 @@ typedef struct {
 #define PCS_MIISTAT       0x0004UL    /* PCS MII Status Register */
 #define PCS_ISTAT         0x0018UL    /* PCS Interrupt Status Reg */
 #define PCS_SSTATE        0x005CUL    /* Serialink State Register */
+
+/* Descriptors */
+struct gem_txd {
+    uint64_t control_word;
+    uint64_t buffer;
+};
+
+#define TXDCTRL_BUFSZ     0x0000000000007fffULL  /* Buffer Size */
+#define TXDCTRL_CSTART    0x00000000001f8000ULL  /* CSUM Start Offset */
+#define TXDCTRL_COFF      0x000000001fe00000ULL  /* CSUM Stuff Offset */
+#define TXDCTRL_CENAB     0x0000000020000000ULL  /* CSUM Enable */
+#define TXDCTRL_EOF       0x0000000040000000ULL  /* End of Frame */
+#define TXDCTRL_SOF       0x0000000080000000ULL  /* Start of Frame */
+#define TXDCTRL_INTME     0x0000000100000000ULL  /* "Interrupt Me" */
+
+struct gem_rxd {
+    uint64_t status_word;
+    uint64_t buffer;
+};
+
+#define RXDCTRL_HPASS     0x1000000000000000ULL  /* Passed Hash Filter */
+#define RXDCTRL_ALTMAC    0x2000000000000000ULL  /* Matched ALT MAC */
 
 
 static const struct RegBlock {
