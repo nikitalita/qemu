@@ -30,6 +30,7 @@ typedef struct {
     MemoryRegion greg;
     MemoryRegion txdma;
     MemoryRegion rxdma;
+    MemoryRegion mac;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -89,6 +90,31 @@ typedef struct {
 #define RXDMA_BLANK       0x0108UL    /* RX Blanking Register */
 #define RXDMA_FTAG        0x0110UL    /* RX FIFO Tag */
 #define RXDMA_FSZ         0x0120UL    /* RX FIFO Size */
+
+/* MAC Registers */
+#define SUNGEM_MMIO_MAC_SIZE   0x200
+#define MAC_TXRST         0x0000UL    /* TX MAC Software Reset Command */
+#define MAC_RXRST         0x0004UL    /* RX MAC Software Reset Command */
+#define MAC_TXSTAT        0x0010UL    /* TX MAC Status Register */
+#define MAC_RXSTAT        0x0014UL    /* RX MAC Status Register */
+#define MAC_CSTAT         0x0018UL    /* MAC Control Status Register */
+#define MAC_TXMASK        0x0020UL    /* TX MAC Mask Register */
+#define MAC_RXMASK        0x0024UL    /* RX MAC Mask Register */
+#define MAC_MCMASK        0x0028UL    /* MAC Control Mask Register */
+#define MAC_TXCFG         0x0030UL    /* TX MAC Configuration Register */
+#define MAC_RXCFG         0x0034UL    /* RX MAC Configuration Register */
+#define MAC_XIFCFG        0x003CUL    /* XIF Configuration Register */
+#define MAC_MINFSZ        0x0050UL    /* MinFrameSize Register */
+#define MAC_MAXFSZ        0x0054UL    /* MaxFrameSize Register */
+#define MAC_ADDR0         0x0080UL    /* MAC Address 0 Register */
+#define MAC_ADDR1         0x0084UL    /* MAC Address 1 Register */
+#define MAC_ADDR2         0x0088UL    /* MAC Address 2 Register */
+#define MAC_ADDR3         0x008CUL    /* MAC Address 3 Register */
+#define MAC_ADDR4         0x0090UL    /* MAC Address 4 Register */
+#define MAC_ADDR5         0x0094UL    /* MAC Address 5 Register */
+#define MAC_HASH0         0x00C0UL    /* Hash Table 0 Register */
+#define MAC_PATMPS        0x0114UL    /* Peak Attempts Register */
+#define MAC_SMACHINE      0x0134UL    /* State Machine Register */
 
 
 static const struct RegBlock {
@@ -183,24 +209,24 @@ static void sungem_eval_cascade_irq(SunGEMState *s)
 {
     uint32_t stat, mask;
 
-    mask = GET_REG(s, MAC_TXSTAT);
-    stat = GET_REG(s, MAC_TXMASK);
+    mask = GET_REG(s, MAC_TXSTAT + 0x6000);
+    stat = GET_REG(s, MAC_TXMASK + 0x6000);
     if (stat & ~mask) {
         sungem_update_status(s, GREG_STAT_TXMAC, true);
     } else {
         sungem_update_status(s, GREG_STAT_TXMAC, false);
     }
 
-    mask = GET_REG(s, MAC_RXSTAT);
-    stat = GET_REG(s, MAC_RXMASK);
+    mask = GET_REG(s, MAC_RXSTAT + 0x6000);
+    stat = GET_REG(s, MAC_RXMASK + 0x6000);
     if (stat & ~mask) {
         sungem_update_status(s, GREG_STAT_RXMAC, true);
     } else {
         sungem_update_status(s, GREG_STAT_RXMAC, false);
     }
 
-    mask = GET_REG(s, MAC_CSTAT);
-    stat = GET_REG(s, MAC_MCMASK) & ~MAC_CSTAT_PTR;
+    mask = GET_REG(s, MAC_CSTAT + 0x6000);
+    stat = GET_REG(s, MAC_MCMASK + 0x6000) & ~MAC_CSTAT_PTR;
     if (stat & ~mask) {
         sungem_update_status(s, GREG_STAT_MAC, true);
     } else {
@@ -232,7 +258,7 @@ static void sungem_send_packet(SunGEMState *s, const uint8_t *buf,
 {
     NetClientState *nc = qemu_get_queue(s->nic);
 
-    if (GET_REG(s, MAC_XIFCFG) & MAC_XIFCFG_LBCK) {
+    if (GET_REG(s, MAC_XIFCFG + 0x6000) & MAC_XIFCFG_LBCK) {
         nc->info->receive(nc, buf, size);
     } else {
         qemu_send_packet(nc, buf, size);
@@ -304,7 +330,7 @@ static void sungem_tx_kick(SunGEMState *s)
      * when the driver is resetting the pointer.
      */
     txdma_cfg = GET_REG(s, TXDMA_CFG + 0x2000);
-    txmac_cfg = GET_REG(s, MAC_TXCFG);
+    txmac_cfg = GET_REG(s, MAC_TXCFG + 0x6000);
     if (!(txdma_cfg & TXDMA_CFG_ENABLE) ||
         !(txmac_cfg & MAC_TXCFG_ENAB)) {
         trace_sungem_tx_disabled();
@@ -367,7 +393,7 @@ static int sungem_can_receive(NetClientState *nc)
     uint32_t kick, done, rxdma_cfg, rxmac_cfg;
     bool full;
 
-    rxmac_cfg = GET_REG(s, MAC_RXCFG);
+    rxmac_cfg = GET_REG(s, MAC_RXCFG + 0x6000);
     rxdma_cfg = GET_REG(s, RXDMA_CFG + 0x4000);
 
     /* If MAC disabled, can't receive */
@@ -402,7 +428,7 @@ enum {
 
 static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
 {
-    uint32_t rxcfg = GET_REG(s, MAC_RXCFG);
+    uint32_t rxcfg = GET_REG(s, MAC_RXCFG + 0x6000);
     uint32_t mac0, mac1, mac2;
 
     /* Promisc enabled ? */
@@ -441,7 +467,7 @@ static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
 
             crc >>= 24;
             idx = (crc >> 2) & 0x3c;
-            hash = GET_REG(s, MAC_HASH0 + idx);
+            hash = GET_REG(s, MAC_HASH0 + idx + 0x6000);
             if (hash & (1 << (15 - (crc & 0xf)))) {
                 return rx_match_mcast;
             }
@@ -450,18 +476,18 @@ static int sungem_check_rx_mac(SunGEMState *s, const uint8_t *mac, uint32_t crc)
     }
 
     /* Main MAC check */
-    trace_sungem_rx_mac_compare(GET_REG(s, MAC_ADDR0), GET_REG(s, MAC_ADDR1),
-                                GET_REG(s, MAC_ADDR2));
-    if (mac0 == GET_REG(s, MAC_ADDR0) &&
-        mac1 == GET_REG(s, MAC_ADDR1) &&
-        mac2 == GET_REG(s, MAC_ADDR2)) {
+    trace_sungem_rx_mac_compare(GET_REG(s, MAC_ADDR0 + 0x6000), GET_REG(s, MAC_ADDR1 + 0x6000),
+                                GET_REG(s, MAC_ADDR2 + 0x6000));
+    if (mac0 == GET_REG(s, MAC_ADDR0 + 0x6000) &&
+        mac1 == GET_REG(s, MAC_ADDR1 + 0x6000) &&
+        mac2 == GET_REG(s, MAC_ADDR2 + 0x6000)) {
         return rx_match_mac;
     }
 
     /* Alt MAC check */
-    if (mac0 == GET_REG(s, MAC_ADDR3) &&
-        mac1 == GET_REG(s, MAC_ADDR4) &&
-        mac2 == GET_REG(s, MAC_ADDR5)) {
+    if (mac0 == GET_REG(s, MAC_ADDR3 + 0x6000) &&
+        mac1 == GET_REG(s, MAC_ADDR4 + 0x6000) &&
+        mac2 == GET_REG(s, MAC_ADDR5 + 0x6000)) {
         return rx_match_altmac;
     }
 
@@ -482,9 +508,9 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
 
     trace_sungem_rx_packet(size);
 
-    rxmac_cfg = GET_REG(s, MAC_RXCFG);
+    rxmac_cfg = GET_REG(s, MAC_RXCFG + 0x6000);
     rxdma_cfg = GET_REG(s, RXDMA_CFG + 0x4000);
-    max_fsize = GET_REG(s, MAC_MAXFSZ) & 0x7fff;
+    max_fsize = GET_REG(s, MAC_MAXFSZ + 0x6000) & 0x7fff;
 
     /* If MAC or DMA disabled, can't receive */
     if (!(rxdma_cfg & RXDMA_CFG_ENABLE) ||
@@ -671,9 +697,9 @@ static void sungem_reset_all(SunGEMState *s, bool pci_reset)
         uint8_t *ma = s->conf.macaddr.a;
 
         SET_REG(s, GREG_SWRST, 0);
-        SET_REG(s, MAC_ADDR0, (ma[4] << 8) | ma[5]);
-        SET_REG(s, MAC_ADDR1, (ma[2] << 8) | ma[3]);
-        SET_REG(s, MAC_ADDR2, (ma[0] << 8) | ma[1]);
+        SET_REG(s, MAC_ADDR0 + 0x6000, (ma[4] << 8) | ma[5]);
+        SET_REG(s, MAC_ADDR1 + 0x6000, (ma[2] << 8) | ma[3]);
+        SET_REG(s, MAC_ADDR2 + 0x6000, (ma[0] << 8) | ma[1]);
     } else {
         SET_REG(s, GREG_SWRST, GET_REG(s, GREG_SWRST) & GREG_SWRST_RSTOUT);
     }
@@ -778,13 +804,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     /* Pre-write filter */
     switch (addr) {
     /* Read only registers */
-    case MAC_TXRST: /* Not technically read-only but will do for now */
-    case MAC_RXRST: /* Not technically read-only but will do for now */
-    case MAC_TXSTAT:
-    case MAC_RXSTAT:
-    case MAC_CSTAT:
-    case MAC_PATMPS:
-    case MAC_SMACHINE:
     case MIF_STATUS:
     case MIF_SMACHINE:
     case PCS_MIISTAT:
@@ -797,30 +816,14 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
         val &= ~MIF_CFG_MDI1;
         val |= MIF_CFG_MDI0;
         break;
-    case MAC_MINFSZ:
-        /* 10-bits implemented */
-        val &= 0x3ff;
-        break;
     }
 
     *regp = val;
 
     /* Post write action */
     switch (addr) {
-    case MAC_TXMASK:
-    case MAC_RXMASK:
-    case MAC_MCMASK:
-        sungem_eval_cascade_irq(s);
-        break;
     case MIF_FRAME:
         *regp = sungem_mii_op(s, val);
-        break;
-    case MAC_RXCFG:
-        sungem_update_masks(s);
-        if ((GET_REG(s, MAC_RXCFG) & MAC_RXCFG_ENAB) != 0 &&
-            (GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_ENABLE) != 0) {
-            qemu_flush_queued_packets(qemu_get_queue(s->nic));
-        }
         break;
     }
 }
@@ -845,21 +848,6 @@ static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
     val = *regp;
 
     trace_sungem_mmio_read(addr, val);
-
-    switch (addr) {
-    case MAC_TXSTAT:
-        *regp = 0; /* Side effect, clear all */
-        sungem_update_status(s, GREG_STAT_TXMAC, false);
-        break;
-    case MAC_RXSTAT:
-        *regp = 0; /* Side effect, clear all */
-        sungem_update_status(s, GREG_STAT_RXMAC, false);
-        break;
-    case MAC_CSTAT:
-        *regp &= MAC_CSTAT_PTR; /* Side effect, interrupt bits */
-        sungem_update_status(s, GREG_STAT_MAC, false);
-        break;
-    }
 
     return val;
 }
@@ -1078,7 +1066,7 @@ static void sungem_mmio_rxdma_write(void *opaque, hwaddr addr, uint64_t val,
         break;
     case RXDMA_CFG:
         sungem_update_masks(s);
-        if ((GET_REG(s, MAC_RXCFG) & MAC_RXCFG_ENAB) != 0 &&
+        if ((GET_REG(s, MAC_RXCFG + 0x6000) & MAC_RXCFG_ENAB) != 0 &&
             (GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_ENABLE) != 0) {
             qemu_flush_queued_packets(qemu_get_queue(s->nic));
         }
@@ -1116,6 +1104,102 @@ static const MemoryRegionOps sungem_mmio_rxdma_ops = {
     },
 };
 
+static void sungem_mmio_mac_write(void *opaque, hwaddr addr, uint64_t val,
+                                  unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr + 0x6000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown MAC register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_mac_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case MAC_TXRST: /* Not technically read-only but will do for now */
+    case MAC_RXRST: /* Not technically read-only but will do for now */
+    case MAC_TXSTAT:
+    case MAC_RXSTAT:
+    case MAC_CSTAT:
+    case MAC_PATMPS:
+    case MAC_SMACHINE:
+        return; /* No actual write */
+    case MAC_MINFSZ:
+        /* 10-bits implemented */
+        val &= 0x3ff;
+        break;
+    }
+
+    *regp = val;
+
+    /* Post write action */
+    switch (addr) {
+    case MAC_TXMASK:
+    case MAC_RXMASK:
+    case MAC_MCMASK:
+        sungem_eval_cascade_irq(s);
+        break;
+    case MAC_RXCFG:
+        sungem_update_masks(s);
+        if ((GET_REG(s, MAC_RXCFG + 0x6000) & MAC_RXCFG_ENAB) != 0 &&
+            (GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_ENABLE) != 0) {
+            qemu_flush_queued_packets(qemu_get_queue(s->nic));
+        }
+        break;
+    }
+}
+
+static uint64_t sungem_mmio_mac_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr + 0x6000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown MAC register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+
+    val = *regp;
+
+    trace_sungem_mmio_mac_read(addr, val);
+
+    switch (addr) {
+    case MAC_TXSTAT:
+        *regp = 0; /* Side effect, clear all */
+        sungem_update_status(s, GREG_STAT_TXMAC, false);
+        break;
+    case MAC_RXSTAT:
+        *regp = 0; /* Side effect, clear all */
+        sungem_update_status(s, GREG_STAT_RXMAC, false);
+        break;
+    case MAC_CSTAT:
+        *regp &= MAC_CSTAT_PTR; /* Side effect, interrupt bits */
+        sungem_update_status(s, GREG_STAT_MAC, false);
+        break;
+    }
+    
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_mac_ops = {
+    .read = sungem_mmio_mac_read,
+    .write = sungem_mmio_mac_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
 
 static void sungem_init_regs(SunGEMState *s)
 {
@@ -1191,6 +1275,10 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
                           "sungem.rxdma", SUNGEM_MMIO_RXDMA_SIZE);
     memory_region_add_subregion_overlap(&s->sungem, 0x4000, &s->rxdma, 1);
 
+    memory_region_init_io(&s->mac, OBJECT(s), &sungem_mmio_mac_ops, s,
+                          "sungem.mac", SUNGEM_MMIO_MAC_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0x6000, &s->mac, 1);
+    
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
                           "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);
     memory_region_add_subregion(&s->sungem, 0, &s->mmio);

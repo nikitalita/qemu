@@ -303,72 +303,72 @@
  */
 
 /* MAC Registers */
-#define MAC_TXRST	0x6000UL	/* TX MAC Software Reset Command*/
-#define MAC_RXRST	0x6004UL	/* RX MAC Software Reset Command*/
-#define MAC_SNDPAUSE	0x6008UL	/* Send Pause Command Register	*/
-#define MAC_TXSTAT	0x6010UL	/* TX MAC Status Register	*/
-#define MAC_RXSTAT	0x6014UL	/* RX MAC Status Register	*/
-#define MAC_CSTAT	0x6018UL	/* MAC Control Status Register	*/
-#define MAC_TXMASK	0x6020UL	/* TX MAC Mask Register		*/
-#define MAC_RXMASK	0x6024UL	/* RX MAC Mask Register		*/
-#define MAC_MCMASK	0x6028UL	/* MAC Control Mask Register	*/
-#define MAC_TXCFG	0x6030UL	/* TX MAC Configuration Register*/
-#define MAC_RXCFG	0x6034UL	/* RX MAC Configuration Register*/
-#define MAC_MCCFG	0x6038UL	/* MAC Control Config Register	*/
-#define MAC_XIFCFG	0x603CUL	/* XIF Configuration Register	*/
-#define MAC_IPG0	0x6040UL	/* InterPacketGap0 Register	*/
-#define MAC_IPG1	0x6044UL	/* InterPacketGap1 Register	*/
-#define MAC_IPG2	0x6048UL	/* InterPacketGap2 Register	*/
-#define MAC_STIME	0x604CUL	/* SlotTime Register		*/
-#define MAC_MINFSZ	0x6050UL	/* MinFrameSize Register	*/
-#define MAC_MAXFSZ	0x6054UL	/* MaxFrameSize Register	*/
-#define MAC_PASIZE	0x6058UL	/* PA Size Register		*/
-#define MAC_JAMSIZE	0x605CUL	/* JamSize Register		*/
-#define MAC_ATTLIM	0x6060UL	/* Attempt Limit Register	*/
-#define MAC_MCTYPE	0x6064UL	/* MAC Control Type Register	*/
-#define MAC_ADDR0	0x6080UL	/* MAC Address 0 Register	*/
-#define MAC_ADDR1	0x6084UL	/* MAC Address 1 Register	*/
-#define MAC_ADDR2	0x6088UL	/* MAC Address 2 Register	*/
-#define MAC_ADDR3	0x608CUL	/* MAC Address 3 Register	*/
-#define MAC_ADDR4	0x6090UL	/* MAC Address 4 Register	*/
-#define MAC_ADDR5	0x6094UL	/* MAC Address 5 Register	*/
-#define MAC_ADDR6	0x6098UL	/* MAC Address 6 Register	*/
-#define MAC_ADDR7	0x609CUL	/* MAC Address 7 Register	*/
-#define MAC_ADDR8	0x60A0UL	/* MAC Address 8 Register	*/
-#define MAC_AFILT0	0x60A4UL	/* Address Filter 0 Register	*/
-#define MAC_AFILT1	0x60A8UL	/* Address Filter 1 Register	*/
-#define MAC_AFILT2	0x60ACUL	/* Address Filter 2 Register	*/
-#define MAC_AF21MSK	0x60B0UL	/* Address Filter 2&1 Mask Reg	*/
-#define MAC_AF0MSK	0x60B4UL	/* Address Filter 0 Mask Reg	*/
-#define MAC_HASH0	0x60C0UL	/* Hash Table 0 Register	*/
-#define MAC_HASH1	0x60C4UL	/* Hash Table 1 Register	*/
-#define MAC_HASH2	0x60C8UL	/* Hash Table 2 Register	*/
-#define MAC_HASH3	0x60CCUL	/* Hash Table 3 Register	*/
-#define MAC_HASH4	0x60D0UL	/* Hash Table 4 Register	*/
-#define MAC_HASH5	0x60D4UL	/* Hash Table 5 Register	*/
-#define MAC_HASH6	0x60D8UL	/* Hash Table 6 Register	*/
-#define MAC_HASH7	0x60DCUL	/* Hash Table 7 Register	*/
-#define MAC_HASH8	0x60E0UL	/* Hash Table 8 Register	*/
-#define MAC_HASH9	0x60E4UL	/* Hash Table 9 Register	*/
-#define MAC_HASH10	0x60E8UL	/* Hash Table 10 Register	*/
-#define MAC_HASH11	0x60ECUL	/* Hash Table 11 Register	*/
-#define MAC_HASH12	0x60F0UL	/* Hash Table 12 Register	*/
-#define MAC_HASH13	0x60F4UL	/* Hash Table 13 Register	*/
-#define MAC_HASH14	0x60F8UL	/* Hash Table 14 Register	*/
-#define MAC_HASH15	0x60FCUL	/* Hash Table 15 Register	*/
-#define MAC_NCOLL	0x6100UL	/* Normal Collision Counter	*/
-#define MAC_FASUCC	0x6104UL	/* First Attmpt. Succ Coll Ctr.	*/
-#define MAC_ECOLL	0x6108UL	/* Excessive Collision Counter	*/
-#define MAC_LCOLL	0x610CUL	/* Late Collision Counter	*/
-#define MAC_DTIMER	0x6110UL	/* Defer Timer			*/
-#define MAC_PATMPS	0x6114UL	/* Peak Attempts Register	*/
-#define MAC_RFCTR	0x6118UL	/* Receive Frame Counter	*/
-#define MAC_LERR	0x611CUL	/* Length Error Counter		*/
-#define MAC_AERR	0x6120UL	/* Alignment Error Counter	*/
-#define MAC_FCSERR	0x6124UL	/* FCS Error Counter		*/
-#define MAC_RXCVERR	0x6128UL	/* RX code Violation Error Ctr	*/
-#define MAC_RANDSEED	0x6130UL	/* Random Number Seed Register	*/
-#define MAC_SMACHINE	0x6134UL	/* State Machine Register	*/
+//#define MAC_TXRST	0x6000UL	/* TX MAC Software Reset Command*/
+//#define MAC_RXRST	0x6004UL	/* RX MAC Software Reset Command*/
+//#define MAC_SNDPAUSE	0x6008UL	/* Send Pause Command Register	*/
+//#define MAC_TXSTAT	0x6010UL	/* TX MAC Status Register	*/
+//#define MAC_RXSTAT	0x6014UL	/* RX MAC Status Register	*/
+//#define MAC_CSTAT	0x6018UL	/* MAC Control Status Register	*/
+//#define MAC_TXMASK	0x6020UL	/* TX MAC Mask Register		*/
+//#define MAC_RXMASK	0x6024UL	/* RX MAC Mask Register		*/
+//#define MAC_MCMASK	0x6028UL	/* MAC Control Mask Register	*/
+//#define MAC_TXCFG	0x6030UL	/* TX MAC Configuration Register*/
+//#define MAC_RXCFG	0x6034UL	/* RX MAC Configuration Register*/
+//#define MAC_MCCFG	0x6038UL	/* MAC Control Config Register	*/
+//#define MAC_XIFCFG	0x603CUL	/* XIF Configuration Register	*/
+//#define MAC_IPG0	0x6040UL	/* InterPacketGap0 Register	*/
+//#define MAC_IPG1	0x6044UL	/* InterPacketGap1 Register	*/
+//#define MAC_IPG2	0x6048UL	/* InterPacketGap2 Register	*/
+//#define MAC_STIME	0x604CUL	/* SlotTime Register		*/
+//#define MAC_MINFSZ	0x6050UL	/* MinFrameSize Register	*/
+//#define MAC_MAXFSZ	0x6054UL	/* MaxFrameSize Register	*/
+//#define MAC_PASIZE	0x6058UL	/* PA Size Register		*/
+//#define MAC_JAMSIZE	0x605CUL	/* JamSize Register		*/
+//#define MAC_ATTLIM	0x6060UL	/* Attempt Limit Register	*/
+//#define MAC_MCTYPE	0x6064UL	/* MAC Control Type Register	*/
+//#define MAC_ADDR0	0x6080UL	/* MAC Address 0 Register	*/
+//#define MAC_ADDR1	0x6084UL	/* MAC Address 1 Register	*/
+//#define MAC_ADDR2	0x6088UL	/* MAC Address 2 Register	*/
+//#define MAC_ADDR3	0x608CUL	/* MAC Address 3 Register	*/
+//#define MAC_ADDR4	0x6090UL	/* MAC Address 4 Register	*/
+//#define MAC_ADDR5	0x6094UL	/* MAC Address 5 Register	*/
+//#define MAC_ADDR6	0x6098UL	/* MAC Address 6 Register	*/
+//#define MAC_ADDR7	0x609CUL	/* MAC Address 7 Register	*/
+//#define MAC_ADDR8	0x60A0UL	/* MAC Address 8 Register	*/
+//#define MAC_AFILT0	0x60A4UL	/* Address Filter 0 Register	*/
+//#define MAC_AFILT1	0x60A8UL	/* Address Filter 1 Register	*/
+//#define MAC_AFILT2	0x60ACUL	/* Address Filter 2 Register	*/
+//#define MAC_AF21MSK	0x60B0UL	/* Address Filter 2&1 Mask Reg	*/
+//#define MAC_AF0MSK	0x60B4UL	/* Address Filter 0 Mask Reg	*/
+//#define MAC_HASH0	0x60C0UL	/* Hash Table 0 Register	*/
+//#define MAC_HASH1	0x60C4UL	/* Hash Table 1 Register	*/
+//#define MAC_HASH2	0x60C8UL	/* Hash Table 2 Register	*/
+//#define MAC_HASH3	0x60CCUL	/* Hash Table 3 Register	*/
+//#define MAC_HASH4	0x60D0UL	/* Hash Table 4 Register	*/
+//#define MAC_HASH5	0x60D4UL	/* Hash Table 5 Register	*/
+//#define MAC_HASH6	0x60D8UL	/* Hash Table 6 Register	*/
+//#define MAC_HASH7	0x60DCUL	/* Hash Table 7 Register	*/
+//#define MAC_HASH8	0x60E0UL	/* Hash Table 8 Register	*/
+//#define MAC_HASH9	0x60E4UL	/* Hash Table 9 Register	*/
+//#define MAC_HASH10	0x60E8UL	/* Hash Table 10 Register	*/
+//#define MAC_HASH11	0x60ECUL	/* Hash Table 11 Register	*/
+//#define MAC_HASH12	0x60F0UL	/* Hash Table 12 Register	*/
+//#define MAC_HASH13	0x60F4UL	/* Hash Table 13 Register	*/
+//#define MAC_HASH14	0x60F8UL	/* Hash Table 14 Register	*/
+//#define MAC_HASH15	0x60FCUL	/* Hash Table 15 Register	*/
+//#define MAC_NCOLL	0x6100UL	/* Normal Collision Counter	*/
+//#define MAC_FASUCC	0x6104UL	/* First Attmpt. Succ Coll Ctr.	*/
+//#define MAC_ECOLL	0x6108UL	/* Excessive Collision Counter	*/
+//#define MAC_LCOLL	0x610CUL	/* Late Collision Counter	*/
+//#define MAC_DTIMER	0x6110UL	/* Defer Timer			*/
+//#define MAC_PATMPS	0x6114UL	/* Peak Attempts Register	*/
+//#define MAC_RFCTR	0x6118UL	/* Receive Frame Counter	*/
+//#define MAC_LERR	0x611CUL	/* Length Error Counter		*/
+//#define MAC_AERR	0x6120UL	/* Alignment Error Counter	*/
+//#define MAC_FCSERR	0x6124UL	/* FCS Error Counter		*/
+//#define MAC_RXCVERR	0x6128UL	/* RX code Violation Error Ctr	*/
+//#define MAC_RANDSEED	0x6130UL	/* Random Number Seed Register	*/
+//#define MAC_SMACHINE	0x6134UL	/* State Machine Register	*/
 
 /* TX MAC Software Reset Command. */
 #define MAC_TXRST_CMD	0x00000001	/* Start sw reset, self-clears	*/

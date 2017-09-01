@@ -319,3 +319,5 @@ sungem_mmio_txdma_write(hwaddr addr, uint64_t val) "MMIO txdma write to %"HWADDR
 sungem_mmio_txdma_read(hwaddr addr, uint64_t val) "MMIO txdma read from %"PRIx64" val=%"PRIx64
 sungem_mmio_rxdma_write(hwaddr addr, uint64_t val) "MMIO rxdma write to %"HWADDR_PRIx" val=%"PRIx64
 sungem_mmio_rxdma_read(hwaddr addr, uint64_t val) "MMIO rxdma read from %"PRIx64" val=%"PRIx64
+sungem_mmio_mac_write(hwaddr addr, uint64_t val) "MMIO mac write to %"HWADDR_PRIx" val=%"PRIx64
+sungem_mmio_mac_read(hwaddr addr, uint64_t val) "MMIO mac read from %"PRIx64" val=%"PRIx64
