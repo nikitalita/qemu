@@ -554,7 +554,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
 
     /* Calculate the checksum */
     coff = (rxdma_cfg & RXDMA_CFG_CSUMOFF) >> 13;
-    csum = net_raw_checksum(buf + coff, size - coff);
+    csum = net_raw_checksum((uint8_t *)buf + coff, size - coff);
 
     /* Build the updated descriptor */
     desc.status_word = (size + fcs_size) << 16;
