@@ -31,6 +31,7 @@ typedef struct {
     MemoryRegion txdma;
     MemoryRegion rxdma;
     MemoryRegion mac;
+    MemoryRegion mif;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -115,6 +116,13 @@ typedef struct {
 #define MAC_HASH0         0x00C0UL    /* Hash Table 0 Register */
 #define MAC_PATMPS        0x0114UL    /* Peak Attempts Register */
 #define MAC_SMACHINE      0x0134UL    /* State Machine Register */
+
+/* MIF Registers */
+#define SUNGEM_MMIO_MIF_SIZE   0x20
+#define MIF_FRAME         0x000CUL    /* MIF Frame/Output Register */
+#define MIF_CFG	          0x0010UL    /* MIF Configuration Register */
+#define MIF_STATUS        0x0018UL    /* MIF Status Register */
+#define MIF_SMACHINE      0x001CUL    /* MIF State Machine Register */
 
 
 static const struct RegBlock {
@@ -703,7 +711,7 @@ static void sungem_reset_all(SunGEMState *s, bool pci_reset)
     } else {
         SET_REG(s, GREG_SWRST, GET_REG(s, GREG_SWRST) & GREG_SWRST_RSTOUT);
     }
-    SET_REG(s, MIF_CFG, MIF_CFG_MDI0);
+    SET_REG(s, MIF_CFG + 0x6200, MIF_CFG_MDI0);
 }
 
 static void sungem_mii_write(SunGEMState *s, uint8_t phy_addr,
@@ -804,28 +812,13 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     /* Pre-write filter */
     switch (addr) {
     /* Read only registers */
-    case MIF_STATUS:
-    case MIF_SMACHINE:
     case PCS_MIISTAT:
     case PCS_ISTAT:
     case PCS_SSTATE:
         return; /* No actual write */
-
-    case MIF_CFG:
-        /* Maintain the RO MDI bits to advertize an MDIO PHY on MDI0 */
-        val &= ~MIF_CFG_MDI1;
-        val |= MIF_CFG_MDI0;
-        break;
     }
 
     *regp = val;
-
-    /* Post write action */
-    switch (addr) {
-    case MIF_FRAME:
-        *regp = sungem_mii_op(s, val);
-        break;
-    }
 }
 
 static uint64_t sungem_mmio_read(void *opaque, hwaddr addr, unsigned size)
@@ -1201,6 +1194,78 @@ static const MemoryRegionOps sungem_mmio_mac_ops = {
     },
 };
 
+static void sungem_mmio_mif_write(void *opaque, hwaddr addr, uint64_t val,
+                                  unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr + 0x6200);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown MIF register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_mif_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case MIF_STATUS:
+    case MIF_SMACHINE:
+        return; /* No actual write */
+    case MIF_CFG:
+        /* Maintain the RO MDI bits to advertize an MDIO PHY on MDI0 */
+        val &= ~MIF_CFG_MDI1;
+        val |= MIF_CFG_MDI0;
+        break;
+    }
+
+    *regp = val;
+
+    /* Post write action */
+    switch (addr) {
+    case MIF_FRAME:
+        *regp = sungem_mii_op(s, val);
+        break;
+    }
+}
+
+static uint64_t sungem_mmio_mif_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr + 0x6200);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown MIF register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+
+    val = *regp;
+
+    trace_sungem_mmio_mif_read(addr, val);
+
+    switch (addr) {
+    }
+    
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_mif_ops = {
+    .read = sungem_mmio_mif_read,
+    .write = sungem_mmio_mif_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void sungem_init_regs(SunGEMState *s)
 {
     uint32_t i;
@@ -1278,7 +1343,11 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init_io(&s->mac, OBJECT(s), &sungem_mmio_mac_ops, s,
                           "sungem.mac", SUNGEM_MMIO_MAC_SIZE);
     memory_region_add_subregion_overlap(&s->sungem, 0x6000, &s->mac, 1);
-    
+
+    memory_region_init_io(&s->mif, OBJECT(s), &sungem_mmio_mif_ops, s,
+                          "sungem.mif", SUNGEM_MMIO_MIF_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0x6200, &s->mif, 1);
+
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
                           "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);
     memory_region_add_subregion(&s->sungem, 0, &s->mmio);

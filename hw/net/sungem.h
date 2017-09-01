@@ -614,14 +614,14 @@
  */
 
 /* MIF Registers */
-#define MIF_BBCLK	0x6200UL	/* MIF Bit-Bang Clock		*/
-#define MIF_BBDATA	0x6204UL	/* MIF Bit-Band Data		*/
-#define MIF_BBOENAB	0x6208UL	/* MIF Bit-Bang Output Enable	*/
-#define MIF_FRAME	0x620CUL	/* MIF Frame/Output Register	*/
-#define MIF_CFG		0x6210UL	/* MIF Configuration Register	*/
-#define MIF_MASK	0x6214UL	/* MIF Mask Register		*/
-#define MIF_STATUS	0x6218UL	/* MIF Status Register		*/
-#define MIF_SMACHINE	0x621CUL	/* MIF State Machine Register	*/
+//#define MIF_BBCLK	0x6200UL	/* MIF Bit-Bang Clock		*/
+//#define MIF_BBDATA	0x6204UL	/* MIF Bit-Band Data		*/
+//#define MIF_BBOENAB	0x6208UL	/* MIF Bit-Bang Output Enable	*/
+//#define MIF_FRAME	0x620CUL	/* MIF Frame/Output Register	*/
+//#define MIF_CFG		0x6210UL	/* MIF Configuration Register	*/
+//#define MIF_MASK	0x6214UL	/* MIF Mask Register		*/
+//#define MIF_STATUS	0x6218UL	/* MIF Status Register		*/
+//#define MIF_SMACHINE	0x621CUL	/* MIF State Machine Register	*/
 
 /* MIF Bit-Bang Clock.  This 1-bit register is used to generate the
  * MDC clock waveform on the MII Management Interface when the MIF is
