@@ -4,7 +4,9 @@
  * As found in Apple ASICs among others
  *
  * Copyright 2016 Ben Herrenschmidt
+ * Copyright 2017 Mark Cave-Ayland
  */
+
 #include "qemu/osdep.h"
 #include "hw/pci/pci.h"
 #include "qemu/log.h"
