@@ -29,6 +29,7 @@ typedef struct {
     MemoryRegion sungem;
     MemoryRegion greg;
     MemoryRegion txdma;
+    MemoryRegion rxdma;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -60,7 +61,7 @@ typedef struct {
 #define GREG_SWRST        0x1010UL    /* Software Reset Register */
 
 /* TX DMA Registers */
-#define SUNGEM_MMIO_TXDMA_SIZE   0x2000
+#define SUNGEM_MMIO_TXDMA_SIZE   0x1000
 #define TXDMA_KICK        0x0000UL    /* TX Kick Register */
 #define TXDMA_CFG         0x0004UL    /* TX Configuration Register */
 #define TXDMA_DBLOW       0x0008UL    /* TX Desc. Base Low */
@@ -72,6 +73,22 @@ typedef struct {
 #define TXDMA_TXDONE      0x0100UL    /* TX Completion Register */
 #define TXDMA_FTAG        0x0108UL    /* TX FIFO Tag */
 #define TXDMA_FSZ         0x0118UL    /* TX FIFO Size */
+
+/* Receive DMA Registers */
+#define SUNGEM_MMIO_RXDMA_SIZE   0x2000
+#define RXDMA_CFG         0x0000UL    /* RX Configuration Register */
+#define RXDMA_DBLOW       0x0004UL    /* RX Descriptor Base Low */
+#define RXDMA_DBHI        0x0008UL    /* RX Descriptor Base High */
+#define RXDMA_PCNT        0x0018UL    /* RX FIFO Packet Counter */
+#define RXDMA_SMACHINE    0x001CUL    /* RX State Machine Register */
+#define RXDMA_PTHRESH     0x0020UL    /* Pause Thresholds */
+#define RXDMA_DPLOW       0x0024UL    /* RX Data Pointer Low */
+#define RXDMA_DPHI        0x0028UL    /* RX Data Pointer High */
+#define RXDMA_KICK        0x0100UL    /* RX Kick Register */
+#define RXDMA_DONE        0x0104UL    /* RX Completion Register */
+#define RXDMA_BLANK       0x0108UL    /* RX Blanking Register */
+#define RXDMA_FTAG        0x0110UL    /* RX FIFO Tag */
+#define RXDMA_FSZ         0x0120UL    /* RX FIFO Size */
 
 
 static const struct RegBlock {
@@ -351,7 +368,7 @@ static int sungem_can_receive(NetClientState *nc)
     bool full;
 
     rxmac_cfg = GET_REG(s, MAC_RXCFG);
-    rxdma_cfg = GET_REG(s, RXDMA_CFG);
+    rxdma_cfg = GET_REG(s, RXDMA_CFG + 0x4000);
 
     /* If MAC disabled, can't receive */
     if ((rxmac_cfg & MAC_RXCFG_ENAB) == 0) {
@@ -364,8 +381,8 @@ static int sungem_can_receive(NetClientState *nc)
     }
 
     /* Check RX availability */
-    kick = GET_REG(s, RXDMA_KICK);
-    done = GET_REG(s, RXDMA_DONE);
+    kick = GET_REG(s, RXDMA_KICK + 0x4000);
+    done = GET_REG(s, RXDMA_DONE + 0x4000);
     full = sungem_rx_full(s, kick, done);
 
     trace_sungem_rx_check(!full, kick, done);
@@ -466,7 +483,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     trace_sungem_rx_packet(size);
 
     rxmac_cfg = GET_REG(s, MAC_RXCFG);
-    rxdma_cfg = GET_REG(s, RXDMA_CFG);
+    rxdma_cfg = GET_REG(s, RXDMA_CFG + 0x4000);
     max_fsize = GET_REG(s, MAC_MAXFSZ) & 0x7fff;
 
     /* If MAC or DMA disabled, can't receive */
@@ -517,8 +534,8 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     }
 
     /* Get ring pointers */
-    kick = GET_REG(s, RXDMA_KICK) & s->rx_mask;
-    done = GET_REG(s, RXDMA_DONE) & s->rx_mask;
+    kick = GET_REG(s, RXDMA_KICK + 0x4000) & s->rx_mask;
+    done = GET_REG(s, RXDMA_DONE + 0x4000) & s->rx_mask;
 
     trace_sungem_rx_process(done, kick, s->rx_mask + 1);
 
@@ -533,8 +550,8 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
      * cope
      */
 
-    dbase = GET_REG(s, RXDMA_DBHI);
-    dbase = (dbase << 32) | GET_REG(s, RXDMA_DBLOW);
+    dbase = GET_REG(s, RXDMA_DBHI + 0x4000);
+    dbase = (dbase << 32) | GET_REG(s, RXDMA_DBLOW + 0x4000);
 
     /* Read the next descriptor */
     pci_dma_read(d, dbase + done * sizeof(desc), &desc, sizeof(desc));
@@ -575,7 +592,7 @@ static ssize_t sungem_receive(NetClientState *nc, const uint8_t *buf,
     pci_dma_write(d, dbase + done * sizeof(desc), &desc, sizeof(desc));
 
     done = (done + 1) & s->rx_mask;
-    SET_REG(s, RXDMA_DONE, done);
+    SET_REG(s, RXDMA_DONE + 0x4000, done);
 
     /* XXX Unconditionally set RX interrupt for now. The interrupt
      * mitigation timer might well end up adding more overhead than
@@ -601,7 +618,7 @@ static void sungem_update_masks(SunGEMState *s)
 {
     uint32_t sz;
 
-    sz = 1 << (((GET_REG(s, RXDMA_CFG) & RXDMA_CFG_RINGSZ) >> 1) + 5);
+    sz = 1 << (((GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_RINGSZ) >> 1) + 5);
     s->rx_mask = sz - 1;
 
     sz = 1 << (((GET_REG(s, TXDMA_CFG + 0x2000) & TXDMA_CFG_RINGSZ) >> 1) + 5);
@@ -614,12 +631,12 @@ static void sungem_reset_rx(SunGEMState *s)
 
     /* XXX Do RXCFG */
     /* XXX Check value */
-    SET_REG(s, RXDMA_FSZ, 0x140);
-    SET_REG(s, RXDMA_DONE, 0);
-    SET_REG(s, RXDMA_KICK, 0);
-    SET_REG(s, RXDMA_CFG, 0x1000010);
-    SET_REG(s, RXDMA_PTHRESH, 0xf8);
-    SET_REG(s, RXDMA_BLANK, 0);
+    SET_REG(s, RXDMA_FSZ + 0x4000, 0x140);
+    SET_REG(s, RXDMA_DONE + 0x4000, 0);
+    SET_REG(s, RXDMA_KICK + 0x4000, 0);
+    SET_REG(s, RXDMA_CFG + 0x4000, 0x1000010);
+    SET_REG(s, RXDMA_PTHRESH + 0x4000, 0xf8);
+    SET_REG(s, RXDMA_BLANK + 0x4000, 0);
 
     sungem_update_masks(s);
 }
@@ -761,13 +778,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     /* Pre-write filter */
     switch (addr) {
     /* Read only registers */
-    case RXDMA_DONE:
-    case RXDMA_PCNT:
-    case RXDMA_SMACHINE:
-    case RXDMA_DPLOW:
-    case RXDMA_DPHI:
-    case RXDMA_FSZ:
-    case RXDMA_FTAG:
     case MAC_TXRST: /* Not technically read-only but will do for now */
     case MAC_RXRST: /* Not technically read-only but will do for now */
     case MAC_TXSTAT:
@@ -805,14 +815,10 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     case MIF_FRAME:
         *regp = sungem_mii_op(s, val);
         break;
-    case RXDMA_KICK:
-        trace_sungem_mmio_write_rx_kick(val);
-        /* Through */
     case MAC_RXCFG:
-    case RXDMA_CFG:
         sungem_update_masks(s);
         if ((GET_REG(s, MAC_RXCFG) & MAC_RXCFG_ENAB) != 0 &&
-            (GET_REG(s, RXDMA_CFG) & RXDMA_CFG_ENABLE) != 0) {
+            (GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_ENABLE) != 0) {
             qemu_flush_queued_packets(qemu_get_queue(s->nic));
         }
         break;
@@ -1034,6 +1040,83 @@ static const MemoryRegionOps sungem_mmio_txdma_ops = {
     },
 };
 
+static void sungem_mmio_rxdma_write(void *opaque, hwaddr addr, uint64_t val,
+                                   unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr + 0x4000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown RXDMA register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_rxdma_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case RXDMA_DONE:
+    case RXDMA_PCNT:
+    case RXDMA_SMACHINE:
+    case RXDMA_DPLOW:
+    case RXDMA_DPHI:
+    case RXDMA_FSZ:
+    case RXDMA_FTAG:
+        return; /* No actual write */
+    }
+
+    *regp = val;
+
+    /* Post write action */
+    switch (addr) {
+    case RXDMA_KICK:
+        trace_sungem_mmio_write_rx_kick(val);
+        break;
+    case RXDMA_CFG:
+        sungem_update_masks(s);
+        if ((GET_REG(s, MAC_RXCFG) & MAC_RXCFG_ENAB) != 0 &&
+            (GET_REG(s, RXDMA_CFG + 0x4000) & RXDMA_CFG_ENABLE) != 0) {
+            qemu_flush_queued_packets(qemu_get_queue(s->nic));
+        }
+        break;
+    }
+}
+
+static uint64_t sungem_mmio_rxdma_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr + 0x4000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown RXDMA register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+
+    val = *regp;
+
+    trace_sungem_mmio_rxdma_read(addr, val);
+
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_rxdma_ops = {
+    .read = sungem_mmio_rxdma_read,
+    .write = sungem_mmio_rxdma_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+
 static void sungem_init_regs(SunGEMState *s)
 {
     uint32_t i;
@@ -1103,7 +1186,11 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init_io(&s->txdma, OBJECT(s), &sungem_mmio_txdma_ops, s,
                           "sungem.txdma", SUNGEM_MMIO_TXDMA_SIZE);
     memory_region_add_subregion_overlap(&s->sungem, 0x2000, &s->txdma, 1);
-    
+
+    memory_region_init_io(&s->rxdma, OBJECT(s), &sungem_mmio_rxdma_ops, s,
+                          "sungem.rxdma", SUNGEM_MMIO_RXDMA_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0x4000, &s->rxdma, 1);
+
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
                           "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);
     memory_region_add_subregion(&s->sungem, 0, &s->mmio);

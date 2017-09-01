@@ -198,26 +198,26 @@
 
 
 /* Receive DMA Registers */
-#define RXDMA_CFG	0x4000UL	/* RX Configuration Register	*/
-#define RXDMA_DBLOW	0x4004UL	/* RX Descriptor Base Low	*/
-#define RXDMA_DBHI	0x4008UL	/* RX Descriptor Base High	*/
-#define RXDMA_FWPTR	0x400CUL	/* RX FIFO Write Pointer	*/
-#define RXDMA_FSWPTR	0x4010UL	/* RX FIFO Shadow Write Pointer	*/
-#define RXDMA_FRPTR	0x4014UL	/* RX FIFO Read Pointer		*/
-#define RXDMA_PCNT	0x4018UL	/* RX FIFO Packet Counter	*/
-#define RXDMA_SMACHINE	0x401CUL	/* RX State Machine Register	*/
-#define RXDMA_PTHRESH	0x4020UL	/* Pause Thresholds		*/
-#define RXDMA_DPLOW	0x4024UL	/* RX Data Pointer Low		*/
-#define RXDMA_DPHI	0x4028UL	/* RX Data Pointer High		*/
-#define RXDMA_KICK	0x4100UL	/* RX Kick Register		*/
-#define RXDMA_DONE	0x4104UL	/* RX Completion Register	*/
-#define RXDMA_BLANK	0x4108UL	/* RX Blanking Register		*/
-#define RXDMA_FADDR	0x410CUL	/* RX FIFO Address		*/
-#define RXDMA_FTAG	0x4110UL	/* RX FIFO Tag			*/
-#define RXDMA_DLOW	0x4114UL	/* RX FIFO Data Low		*/
-#define RXDMA_DHIT1	0x4118UL	/* RX FIFO Data HighT0		*/
-#define RXDMA_DHIT0	0x411CUL	/* RX FIFO Data HighT1		*/
-#define RXDMA_FSZ	0x4120UL	/* RX FIFO Size			*/
+//#define RXDMA_CFG	0x4000UL	/* RX Configuration Register	*/
+//#define RXDMA_DBLOW	0x4004UL	/* RX Descriptor Base Low	*/
+//#define RXDMA_DBHI	0x4008UL	/* RX Descriptor Base High	*/
+//#define RXDMA_FWPTR	0x400CUL	/* RX FIFO Write Pointer	*/
+//#define RXDMA_FSWPTR	0x4010UL	/* RX FIFO Shadow Write Pointer	*/
+//#define RXDMA_FRPTR	0x4014UL	/* RX FIFO Read Pointer		*/
+//#define RXDMA_PCNT	0x4018UL	/* RX FIFO Packet Counter	*/
+//#define RXDMA_SMACHINE	0x401CUL	/* RX State Machine Register	*/
+//#define RXDMA_PTHRESH	0x4020UL	/* Pause Thresholds		*/
+//#define RXDMA_DPLOW	0x4024UL	/* RX Data Pointer Low		*/
+//#define RXDMA_DPHI	0x4028UL	/* RX Data Pointer High		*/
+//#define RXDMA_KICK	0x4100UL	/* RX Kick Register		*/
+//#define RXDMA_DONE	0x4104UL	/* RX Completion Register	*/
+//#define RXDMA_BLANK	0x4108UL	/* RX Blanking Register		*/
+//#define RXDMA_FADDR	0x410CUL	/* RX FIFO Address		*/
+//#define RXDMA_FTAG	0x4110UL	/* RX FIFO Tag			*/
+//#define RXDMA_DLOW	0x4114UL	/* RX FIFO Data Low		*/
+//#define RXDMA_DHIT1	0x4118UL	/* RX FIFO Data HighT0		*/
+//#define RXDMA_DHIT0	0x411CUL	/* RX FIFO Data HighT1		*/
+//#define RXDMA_FSZ	0x4120UL	/* RX FIFO Size			*/
 
 /* RX Configuration Register. */
 #define RXDMA_CFG_ENABLE	0x00000001	/* Enable RX DMA channel	*/
