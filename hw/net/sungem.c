@@ -206,7 +206,7 @@ typedef struct {
     uint32_t rxdmaregs[SUNGEM_MMIO_RXDMA_SIZE >> 2];
     uint32_t macregs[SUNGEM_MMIO_MAC_SIZE >> 2];
     uint32_t mifregs[SUNGEM_MMIO_MIF_SIZE >> 2];
-    uint32_t pcsregs[SUNGEM_MMIO_MIF_SIZE >> 2];
+    uint32_t pcsregs[SUNGEM_MMIO_PCS_SIZE >> 2];
     
     /* Cache some useful things */
     uint32_t rx_mask;
@@ -1376,6 +1376,29 @@ static Property sungem_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static const VMStateDescription vmstate_sungem = {
+    .name = "sungem",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(pdev, SunGEMState),
+        VMSTATE_MACADDR(conf.macaddr, SunGEMState),
+        VMSTATE_UINT32(phy_addr, SunGEMState),
+        VMSTATE_UINT32_ARRAY(gregs, SunGEMState, (SUNGEM_MMIO_GREG_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(txdmaregs, SunGEMState, (SUNGEM_MMIO_TXDMA_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(rxdmaregs, SunGEMState, (SUNGEM_MMIO_RXDMA_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(macregs, SunGEMState, (SUNGEM_MMIO_MAC_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(mifregs, SunGEMState, (SUNGEM_MMIO_MIF_SIZE >> 2)),
+        VMSTATE_UINT32_ARRAY(pcsregs, SunGEMState, (SUNGEM_MMIO_PCS_SIZE >> 2)),
+        VMSTATE_UINT32(rx_mask, SunGEMState),
+        VMSTATE_UINT32(tx_mask, SunGEMState),
+        VMSTATE_UINT8_ARRAY(tx_data, SunGEMState, MAX_PACKET_SIZE),
+        VMSTATE_UINT32(tx_size, SunGEMState),
+        VMSTATE_UINT64(tx_first_ctl, SunGEMState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void sungem_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1387,6 +1410,7 @@ static void sungem_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_APPLE_UNI_N_GMAC;
     k->revision = 0x01;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
+    dc->vmsd = &vmstate_sungem;
     dc->reset = sungem_reset;
     dc->props = sungem_properties;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
