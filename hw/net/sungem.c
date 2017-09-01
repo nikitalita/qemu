@@ -25,6 +25,8 @@
 
 typedef struct {
     PCIDevice pdev;
+
+    MemoryRegion sungem;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -41,6 +43,8 @@ typedef struct {
     uint32_t tx_size;
     uint64_t tx_first_ctl;
 } SunGEMState;
+
+#define SUNGEM_MMIO_SIZE        0x200000
 
 static const struct RegBlock {
     uint32_t base;      /* Base offset */
@@ -940,9 +944,13 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     pci_conf[PCI_MAX_LAT] = 0x40;
 
     sungem_init_regs(s);
+    memory_region_init(&s->sungem, OBJECT(s), "sungem", SUNGEM_MMIO_SIZE);
+
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
-                          "sungem-mmio", SUNGEM_MMIO_SIZE);
-    pci_register_bar(pci_dev, 0, 0, &s->mmio);
+                          "sungem.mmio", SUNGEM_MMIO_SIZE);
+    memory_region_add_subregion(&s->sungem, 0, &s->mmio);
+
+    pci_register_bar(pci_dev, 0, 0, &s->sungem);
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(&net_sungem_info, &s->conf,

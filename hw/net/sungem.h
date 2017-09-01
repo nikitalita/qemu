@@ -10,7 +10,7 @@
 #define _SUNGEM_H
 
 /* Total MMIO size */
-#define SUNGEM_MMIO_SIZE        0x200000
+//#define SUNGEM_MMIO_SIZE        0x200000
 
 /* Global Registers */
 #define GREG_SEBSTATE	0x0000UL	/* SEB State Register		*/
