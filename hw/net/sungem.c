@@ -884,14 +884,15 @@ static void sungem_mmio_greg_write(void *opaque, hwaddr addr, uint64_t val,
     SunGEMState *s = opaque;
     uint32_t *regp;
 
-    regp = sungem_get_reg(s, addr);
-    if (!regp) {
+    if (!(addr < 0x20) && !(addr >= 0x1000 && addr <= 0x1010)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown GREG register 0x%"HWADDR_PRIx,
+                      "Write to unknown GREG register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
 
+    regp = sungem_get_reg(s, addr);
+    
     trace_sungem_mmio_greg_write(addr, val);
 
     /* Pre-write filter */
@@ -940,13 +941,14 @@ static uint64_t sungem_mmio_greg_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr);
-    if (!regp) {
+    if (!(addr < 0x20) && !(addr >= 0x1000 && addr <= 0x1010)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown GREG register 0x%"HWADDR_PRIx,
+                      "Read from unknown GREG register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
+
+    regp = sungem_get_reg(s, addr);
     val = *regp;
 
     trace_sungem_mmio_greg_read(addr, val);
@@ -988,13 +990,14 @@ static void sungem_mmio_txdma_write(void *opaque, hwaddr addr, uint64_t val,
     SunGEMState *s = opaque;
     uint32_t *regp;
 
-    regp = sungem_get_reg(s, addr + 0x2000);
-    if (!regp) {
+    if (!(addr < 0x38) && !(addr >= 0x100 && addr <= 0x118)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown TXDMA register 0x%"HWADDR_PRIx,
+                      "Write to unknown TXDMA register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
+
+    regp = sungem_get_reg(s, addr + 0x2000);
 
     trace_sungem_mmio_txdma_write(addr, val);
 
@@ -1029,14 +1032,14 @@ static uint64_t sungem_mmio_txdma_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr + 0x2000);
-    if (!regp) {
+    if (!(addr < 0x38) && !(addr >= 0x100 && addr <= 0x118)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown TXDMA register 0x%"HWADDR_PRIx,
+                      "Read from unknown TXDMA register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
 
+    regp = sungem_get_reg(s, addr + 0x2000);
     val = *regp;
 
     trace_sungem_mmio_txdma_read(addr, val);
@@ -1059,14 +1062,15 @@ static void sungem_mmio_rxdma_write(void *opaque, hwaddr addr, uint64_t val,
 {
     SunGEMState *s = opaque;
     uint32_t *regp;
-
-    regp = sungem_get_reg(s, addr + 0x4000);
-    if (!regp) {
+    
+    if (!(addr <= 0x28) && !(addr >= 0x100 && addr <= 0x120)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown RXDMA register 0x%"HWADDR_PRIx,
+                      "Write to unknown RXDMA register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
+
+    regp = sungem_get_reg(s, addr + 0x4000);
 
     trace_sungem_mmio_rxdma_write(addr, val);
 
@@ -1105,14 +1109,14 @@ static uint64_t sungem_mmio_rxdma_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr + 0x4000);
-    if (!regp) {
+    if (!(addr <= 0x28) && !(addr >= 0x100 && addr <= 0x120)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown RXDMA register 0x%"HWADDR_PRIx,
+                      "Read from unknown RXDMA register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
 
+    regp = sungem_get_reg(s, addr + 0x4000);
     val = *regp;
 
     trace_sungem_mmio_rxdma_read(addr, val);
@@ -1136,13 +1140,14 @@ static void sungem_mmio_mac_write(void *opaque, hwaddr addr, uint64_t val,
     SunGEMState *s = opaque;
     uint32_t *regp;
 
-    regp = sungem_get_reg(s, addr + 0x6000);
-    if (!regp) {
+    if (!(addr <= 0x134)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown MAC register 0x%"HWADDR_PRIx,
+                      "Write to unknown MAC register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
+
+    regp = sungem_get_reg(s, addr + 0x6000);
 
     trace_sungem_mmio_mac_write(addr, val);
 
@@ -1187,14 +1192,14 @@ static uint64_t sungem_mmio_mac_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr + 0x6000);
-    if (!regp) {
+    if (!(addr <= 0x134)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown MAC register 0x%"HWADDR_PRIx,
+                      "Read from unknown MAC register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
 
+    regp = sungem_get_reg(s, addr + 0x6000);
     val = *regp;
 
     trace_sungem_mmio_mac_read(addr, val);
@@ -1233,13 +1238,14 @@ static void sungem_mmio_mif_write(void *opaque, hwaddr addr, uint64_t val,
     SunGEMState *s = opaque;
     uint32_t *regp;
 
-    regp = sungem_get_reg(s, addr + 0x6200);
-    if (!regp) {
+    if (!(addr <= 0x1c)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown MIF register 0x%"HWADDR_PRIx,
+                      "Write to unknown MIF register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
+
+    regp = sungem_get_reg(s, addr + 0x6200);
 
     trace_sungem_mmio_mif_write(addr, val);
 
@@ -1271,14 +1277,14 @@ static uint64_t sungem_mmio_mif_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr + 0x6200);
-    if (!regp) {
+    if (!(addr <= 0x1c)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown MIF register 0x%"HWADDR_PRIx,
+                      "Read from unknown MIF register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
 
+    regp = sungem_get_reg(s, addr + 0x6200);
     val = *regp;
 
     trace_sungem_mmio_mif_read(addr, val);
@@ -1302,13 +1308,14 @@ static void sungem_mmio_pcs_write(void *opaque, hwaddr addr, uint64_t val,
     SunGEMState *s = opaque;
     uint32_t *regp;
 
-    regp = sungem_get_reg(s, addr + 0x9000);
-    if (!regp) {
+    if (!(addr <= 0x18) && !(addr >= 0x50 && addr <= 0x5c)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Write to unknown PCS register 0x%"HWADDR_PRIx,
+                      "Write to unknown PCS register 0x%"HWADDR_PRIx"\n",
                       addr);
         return;
     }
+
+    regp = sungem_get_reg(s, addr + 0x9000);
 
     trace_sungem_mmio_pcs_write(addr, val);
 
@@ -1329,14 +1336,14 @@ static uint64_t sungem_mmio_pcs_read(void *opaque, hwaddr addr, unsigned size)
     SunGEMState *s = opaque;
     uint32_t val, *regp;
 
-    regp = sungem_get_reg(s, addr + 0x9000);
-    if (!regp) {
+    if (!(addr <= 0x18) && !(addr >= 0x50 && addr <= 0x5c)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Read from unknown PCS register 0x%"HWADDR_PRIx,
+                      "Read from unknown PCS register 0x%"HWADDR_PRIx"\n",
                       addr);
         return 0;
     }
 
+    regp = sungem_get_reg(s, addr + 0x9000);
     val = *regp;
 
     trace_sungem_mmio_pcs_read(addr, val);
