@@ -32,6 +32,7 @@ typedef struct {
     MemoryRegion rxdma;
     MemoryRegion mac;
     MemoryRegion mif;
+    MemoryRegion pcs;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -123,6 +124,12 @@ typedef struct {
 #define MIF_CFG	          0x0010UL    /* MIF Configuration Register */
 #define MIF_STATUS        0x0018UL    /* MIF Status Register */
 #define MIF_SMACHINE      0x001CUL    /* MIF State Machine Register */
+
+/* PCS/Serialink Registers */
+#define SUNGEM_MMIO_PCS_SIZE   0x60
+#define PCS_MIISTAT       0x0004UL    /* PCS MII Status Register */
+#define PCS_ISTAT         0x0018UL    /* PCS Interrupt Status Reg */
+#define PCS_SSTATE        0x005CUL    /* Serialink State Register */
 
 
 static const struct RegBlock {
@@ -811,11 +818,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
 
     /* Pre-write filter */
     switch (addr) {
-    /* Read only registers */
-    case PCS_MIISTAT:
-    case PCS_ISTAT:
-    case PCS_SSTATE:
-        return; /* No actual write */
     }
 
     *regp = val;
@@ -1250,15 +1252,70 @@ static uint64_t sungem_mmio_mif_read(void *opaque, hwaddr addr, unsigned size)
 
     trace_sungem_mmio_mif_read(addr, val);
 
-    switch (addr) {
-    }
-    
     return val;
 }
 
 static const MemoryRegionOps sungem_mmio_mif_ops = {
     .read = sungem_mmio_mif_read,
     .write = sungem_mmio_mif_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void sungem_mmio_pcs_write(void *opaque, hwaddr addr, uint64_t val,
+                                  unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr + 0x9000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown PCS register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_pcs_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case PCS_MIISTAT:
+    case PCS_ISTAT:
+    case PCS_SSTATE:
+        return; /* No actual write */
+    }
+
+    *regp = val;
+}
+
+static uint64_t sungem_mmio_pcs_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr + 0x9000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown PCS register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+
+    val = *regp;
+
+    trace_sungem_mmio_pcs_read(addr, val);
+
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_pcs_ops = {
+    .read = sungem_mmio_pcs_read,
+    .write = sungem_mmio_pcs_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .impl = {
         .min_access_size = 4,
@@ -1347,6 +1404,10 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init_io(&s->mif, OBJECT(s), &sungem_mmio_mif_ops, s,
                           "sungem.mif", SUNGEM_MMIO_MIF_SIZE);
     memory_region_add_subregion_overlap(&s->sungem, 0x6200, &s->mif, 1);
+
+    memory_region_init_io(&s->pcs, OBJECT(s), &sungem_mmio_pcs_ops, s,
+                          "sungem.pcs", SUNGEM_MMIO_PCS_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0x9000, &s->pcs, 1);
 
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
                           "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);

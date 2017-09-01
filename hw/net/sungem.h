@@ -688,17 +688,17 @@
  */
 
 /* PCS/Serialink Registers */
-#define PCS_MIICTRL	0x9000UL	/* PCS MII Control Register	*/
-#define PCS_MIISTAT	0x9004UL	/* PCS MII Status Register	*/
-#define PCS_MIIADV	0x9008UL	/* PCS MII Advertisement Reg	*/
-#define PCS_MIILP	0x900CUL	/* PCS MII Link Partner Ability	*/
-#define PCS_CFG		0x9010UL	/* PCS Configuration Register	*/
-#define PCS_SMACHINE	0x9014UL	/* PCS State Machine Register	*/
-#define PCS_ISTAT	0x9018UL	/* PCS Interrupt Status Reg	*/
-#define PCS_DMODE	0x9050UL	/* Datapath Mode Register	*/
-#define PCS_SCTRL	0x9054UL	/* Serialink Control Register	*/
-#define PCS_SOS		0x9058UL	/* Shared Output Select Reg	*/
-#define PCS_SSTATE	0x905CUL	/* Serialink State Register	*/
+//#define PCS_MIICTRL	0x9000UL	/* PCS MII Control Register	*/
+//#define PCS_MIISTAT	0x9004UL	/* PCS MII Status Register	*/
+//#define PCS_MIIADV	0x9008UL	/* PCS MII Advertisement Reg	*/
+//#define PCS_MIILP	0x900CUL	/* PCS MII Link Partner Ability	*/
+//#define PCS_CFG		0x9010UL	/* PCS Configuration Register	*/
+//#define PCS_SMACHINE	0x9014UL	/* PCS State Machine Register	*/
+//#define PCS_ISTAT	0x9018UL	/* PCS Interrupt Status Reg	*/
+//#define PCS_DMODE	0x9050UL	/* Datapath Mode Register	*/
+//#define PCS_SCTRL	0x9054UL	/* Serialink Control Register	*/
+//#define PCS_SOS		0x9058UL	/* Shared Output Select Reg	*/
+//#define PCS_SSTATE	0x905CUL	/* Serialink State Register	*/
 
 /* PCD MII Control Register. */
 #define PCS_MIICTRL_SPD	0x00000040	/* Read as one, writes ignored	*/
