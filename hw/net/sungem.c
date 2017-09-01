@@ -28,6 +28,7 @@ typedef struct {
 
     MemoryRegion sungem;
     MemoryRegion greg;
+    MemoryRegion txdma;
     MemoryRegion mmio;
     NICState *nic;
     NICConf conf;
@@ -57,6 +58,20 @@ typedef struct {
 #define GREG_PCIESTAT     0x1000UL    /* PCI Error Status Register */
 #define GREG_PCIEMASK     0x1004UL    /* PCI Error Mask Register */
 #define GREG_SWRST        0x1010UL    /* Software Reset Register */
+
+/* TX DMA Registers */
+#define SUNGEM_MMIO_TXDMA_SIZE   0x2000
+#define TXDMA_KICK        0x0000UL    /* TX Kick Register */
+#define TXDMA_CFG         0x0004UL    /* TX Configuration Register */
+#define TXDMA_DBLOW       0x0008UL    /* TX Desc. Base Low */
+#define TXDMA_DBHI        0x000CUL    /* TX Desc. Base High */
+#define TXDMA_PCNT        0x0024UL    /* TX FIFO Packet Counter	*/
+#define TXDMA_SMACHINE    0x0028UL    /* TX State Machine Register */
+#define TXDMA_DPLOW       0x0030UL    /* TX Data Pointer Low */
+#define TXDMA_DPHI        0x0034UL    /* TX Data Pointer High */
+#define TXDMA_TXDONE      0x0100UL    /* TX Completion Register */
+#define TXDMA_FTAG        0x0108UL    /* TX FIFO Tag */
+#define TXDMA_FSZ         0x0118UL    /* TX FIFO Size */
 
 
 static const struct RegBlock {
@@ -271,7 +286,7 @@ static void sungem_tx_kick(SunGEMState *s)
      * A write to TXDMA_KICK while DMA isn't enabled can happen
      * when the driver is resetting the pointer.
      */
-    txdma_cfg = GET_REG(s, TXDMA_CFG);
+    txdma_cfg = GET_REG(s, TXDMA_CFG + 0x2000);
     txmac_cfg = GET_REG(s, MAC_TXCFG);
     if (!(txdma_cfg & TXDMA_CFG_ENABLE) ||
         !(txmac_cfg & MAC_TXCFG_ENAB)) {
@@ -282,11 +297,11 @@ static void sungem_tx_kick(SunGEMState *s)
     /* XXX Test min frame size register ? */
     /* XXX Test max frame size register ? */
 
-    dbase = GET_REG(s, TXDMA_DBHI);
-    dbase = (dbase << 32) | GET_REG(s, TXDMA_DBLOW);
+    dbase = GET_REG(s, TXDMA_DBHI + 0x2000);
+    dbase = (dbase << 32) | GET_REG(s, TXDMA_DBLOW + 0x2000);
 
-    comp = GET_REG(s, TXDMA_TXDONE) & s->tx_mask;
-    kick = GET_REG(s, TXDMA_KICK) & s->tx_mask;
+    comp = GET_REG(s, TXDMA_TXDONE + 0x2000) & s->tx_mask;
+    kick = GET_REG(s, TXDMA_KICK + 0x2000) & s->tx_mask;
 
     trace_sungem_tx_process(comp, kick, s->tx_mask + 1);
 
@@ -317,7 +332,7 @@ static void sungem_tx_kick(SunGEMState *s)
 
         /* Next ! */
         comp = (comp + 1) & s->tx_mask;
-        SET_REG(s, TXDMA_TXDONE, comp);
+        SET_REG(s, TXDMA_TXDONE + 0x2000, comp);
     }
 
     /* We sent everything, set status/irq bit */
@@ -589,7 +604,7 @@ static void sungem_update_masks(SunGEMState *s)
     sz = 1 << (((GET_REG(s, RXDMA_CFG) & RXDMA_CFG_RINGSZ) >> 1) + 5);
     s->rx_mask = sz - 1;
 
-    sz = 1 << (((GET_REG(s, TXDMA_CFG) & TXDMA_CFG_RINGSZ) >> 1) + 5);
+    sz = 1 << (((GET_REG(s, TXDMA_CFG + 0x2000) & TXDMA_CFG_RINGSZ) >> 1) + 5);
     s->tx_mask = sz - 1;
 }
 
@@ -615,10 +630,10 @@ static void sungem_reset_tx(SunGEMState *s)
 
     /* XXX Do TXCFG */
     /* XXX Check value */
-    SET_REG(s, TXDMA_FSZ, 0x90);
-    SET_REG(s, TXDMA_TXDONE, 0);
-    SET_REG(s, TXDMA_KICK, 0);
-    SET_REG(s, TXDMA_CFG, 0x118010);
+    SET_REG(s, TXDMA_FSZ + 0x2000, 0x90);
+    SET_REG(s, TXDMA_TXDONE + 0x2000, 0);
+    SET_REG(s, TXDMA_KICK + 0x2000, 0);
+    SET_REG(s, TXDMA_CFG + 0x2000, 0x118010);
 
     sungem_update_masks(s);
 
@@ -746,13 +761,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     /* Pre-write filter */
     switch (addr) {
     /* Read only registers */
-    case TXDMA_TXDONE:
-    case TXDMA_PCNT:
-    case TXDMA_SMACHINE:
-    case TXDMA_DPLOW:
-    case TXDMA_DPHI:
-    case TXDMA_FSZ:
-    case TXDMA_FTAG:
     case RXDMA_DONE:
     case RXDMA_PCNT:
     case RXDMA_SMACHINE:
@@ -794,9 +802,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
     case MAC_MCMASK:
         sungem_eval_cascade_irq(s);
         break;
-    case TXDMA_KICK:
-        sungem_tx_kick(s);
-        break;
     case MIF_FRAME:
         *regp = sungem_mii_op(s, val);
         break;
@@ -811,8 +816,6 @@ static void sungem_mmio_write(void *opaque, hwaddr addr, uint64_t val,
             qemu_flush_queued_packets(qemu_get_queue(s->nic));
         }
         break;
-    case TXDMA_CFG:
-        sungem_update_masks(s);
     }
 }
 
@@ -936,14 +939,14 @@ static uint64_t sungem_mmio_greg_read(void *opaque, hwaddr addr, unsigned size)
 
         /* Inject TX completion in returned value */
         val = (val & ~GREG_STAT_TXNR) |
-                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
+                (GET_REG(s, TXDMA_TXDONE + 0x2000) << GREG_STAT_TXNR_SHIFT);
         break;
     case GREG_STAT2:
         /* Return the status reg without side effect
          * (and inject TX completion in returned value)
          */
         return (GET_REG(s, GREG_STAT) & ~GREG_STAT_TXNR) |
-                (GET_REG(s, TXDMA_TXDONE) << GREG_STAT_TXNR_SHIFT);
+                (GET_REG(s, TXDMA_TXDONE + 0x2000) << GREG_STAT_TXNR_SHIFT);
     }
 
     return val;
@@ -952,6 +955,78 @@ static uint64_t sungem_mmio_greg_read(void *opaque, hwaddr addr, unsigned size)
 static const MemoryRegionOps sungem_mmio_greg_ops = {
     .read = sungem_mmio_greg_read,
     .write = sungem_mmio_greg_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .impl = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
+static void sungem_mmio_txdma_write(void *opaque, hwaddr addr, uint64_t val,
+                                   unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t *regp;
+
+    regp = sungem_get_reg(s, addr + 0x2000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Write to unknown TXDMA register 0x%"HWADDR_PRIx,
+                      addr);
+        return;
+    }
+
+    trace_sungem_mmio_txdma_write(addr, val);
+
+    /* Pre-write filter */
+    switch (addr) {
+    /* Read only registers */
+    case TXDMA_TXDONE:
+    case TXDMA_PCNT:
+    case TXDMA_SMACHINE:
+    case TXDMA_DPLOW:
+    case TXDMA_DPHI:
+    case TXDMA_FSZ:
+    case TXDMA_FTAG:
+        return; /* No actual write */
+    }
+
+    *regp = val;
+    
+    /* Post write action */
+    switch (addr) {
+    case TXDMA_KICK:
+        sungem_tx_kick(s);
+        break;
+    case TXDMA_CFG:
+        sungem_update_masks(s);
+        break;
+    }
+}
+
+static uint64_t sungem_mmio_txdma_read(void *opaque, hwaddr addr, unsigned size)
+{
+    SunGEMState *s = opaque;
+    uint32_t val, *regp;
+
+    regp = sungem_get_reg(s, addr + 0x2000);
+    if (!regp) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Read from unknown TXDMA register 0x%"HWADDR_PRIx,
+                      addr);
+        return 0;
+    }
+
+    val = *regp;
+
+    trace_sungem_mmio_txdma_read(addr, val);
+
+    return val;
+}
+
+static const MemoryRegionOps sungem_mmio_txdma_ops = {
+    .read = sungem_mmio_txdma_read,
+    .write = sungem_mmio_txdma_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
     .impl = {
         .min_access_size = 4,
@@ -1024,6 +1099,10 @@ static void sungem_realize(PCIDevice *pci_dev, Error **errp)
     memory_region_init_io(&s->greg, OBJECT(s), &sungem_mmio_greg_ops, s,
                           "sungem.greg", SUNGEM_MMIO_GREG_SIZE);
     memory_region_add_subregion_overlap(&s->sungem, 0, &s->greg, 1);
+
+    memory_region_init_io(&s->txdma, OBJECT(s), &sungem_mmio_txdma_ops, s,
+                          "sungem.txdma", SUNGEM_MMIO_TXDMA_SIZE);
+    memory_region_add_subregion_overlap(&s->sungem, 0x2000, &s->txdma, 1);
     
     memory_region_init_io(&s->mmio, OBJECT(s), &sungem_mmio_ops, s,
                           "sungem.mmio", SUNGEM_MMIO_SIZE - SUNGEM_MMIO_GREG_SIZE);

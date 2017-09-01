@@ -110,25 +110,25 @@
 #define GREG_SWRST_CACHE_SHIFT	16
 
 /* TX DMA Registers */
-#define TXDMA_KICK	0x2000UL	/* TX Kick Register		*/
-#define TXDMA_CFG	0x2004UL	/* TX Configuration Register	*/
-#define TXDMA_DBLOW	0x2008UL	/* TX Desc. Base Low		*/
-#define TXDMA_DBHI	0x200CUL	/* TX Desc. Base High		*/
-#define TXDMA_FWPTR	0x2014UL	/* TX FIFO Write Pointer	*/
-#define TXDMA_FSWPTR	0x2018UL	/* TX FIFO Shadow Write Pointer	*/
-#define TXDMA_FRPTR	0x201CUL	/* TX FIFO Read Pointer		*/
-#define TXDMA_FSRPTR	0x2020UL	/* TX FIFO Shadow Read Pointer	*/
-#define TXDMA_PCNT	0x2024UL	/* TX FIFO Packet Counter	*/
-#define TXDMA_SMACHINE	0x2028UL	/* TX State Machine Register	*/
-#define TXDMA_DPLOW	0x2030UL	/* TX Data Pointer Low		*/
-#define TXDMA_DPHI	0x2034UL	/* TX Data Pointer High		*/
-#define TXDMA_TXDONE	0x2100UL	/* TX Completion Register	*/
-#define TXDMA_FADDR	0x2104UL	/* TX FIFO Address		*/
-#define TXDMA_FTAG	0x2108UL	/* TX FIFO Tag			*/
-#define TXDMA_DLOW	0x210CUL	/* TX FIFO Data Low		*/
-#define TXDMA_DHIT1	0x2110UL	/* TX FIFO Data HighT1		*/
-#define TXDMA_DHIT0	0x2114UL	/* TX FIFO Data HighT0		*/
-#define TXDMA_FSZ	0x2118UL	/* TX FIFO Size			*/
+//#define TXDMA_KICK	0x2000UL	/* TX Kick Register		*/
+//#define TXDMA_CFG	0x2004UL	/* TX Configuration Register	*/
+//#define TXDMA_DBLOW	0x2008UL	/* TX Desc. Base Low		*/
+//#define TXDMA_DBHI	0x200CUL	/* TX Desc. Base High		*/
+//#define TXDMA_FWPTR	0x2014UL	/* TX FIFO Write Pointer	*/
+//#define TXDMA_FSWPTR	0x2018UL	/* TX FIFO Shadow Write Pointer	*/
+//#define TXDMA_FRPTR	0x201CUL	/* TX FIFO Read Pointer		*/
+//#define TXDMA_FSRPTR	0x2020UL	/* TX FIFO Shadow Read Pointer	*/
+//#define TXDMA_PCNT	0x2024UL	/* TX FIFO Packet Counter	*/
+//#define TXDMA_SMACHINE	0x2028UL	/* TX State Machine Register	*/
+//#define TXDMA_DPLOW	0x2030UL	/* TX Data Pointer Low		*/
+//#define TXDMA_DPHI	0x2034UL	/* TX Data Pointer High		*/
+//#define TXDMA_TXDONE	0x2100UL	/* TX Completion Register	*/
+//#define TXDMA_FADDR	0x2104UL	/* TX FIFO Address		*/
+//#define TXDMA_FTAG	0x2108UL	/* TX FIFO Tag			*/
+//#define TXDMA_DLOW	0x210CUL	/* TX FIFO Data Low		*/
+//#define TXDMA_DHIT1	0x2110UL	/* TX FIFO Data HighT1		*/
+//#define TXDMA_DHIT0	0x2114UL	/* TX FIFO Data HighT0		*/
+//#define TXDMA_FSZ	0x2118UL	/* TX FIFO Size			*/
 
 /* TX Kick Register.
  *
