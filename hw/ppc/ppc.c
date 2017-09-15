@@ -863,7 +863,6 @@ static void cpu_ppc_set_tb_clk (void *opaque, uint32_t freq)
 
 static void timebase_save(PPCTimebase *tb)
 {
-    uint64_t ticks = cpu_get_host_ticks();
     PowerPCCPU *first_ppc_cpu = POWERPC_CPU(first_cpu);
 
     if (!first_ppc_cpu->env.tb_env) {
@@ -871,20 +870,15 @@ static void timebase_save(PPCTimebase *tb)
         return;
     }
 
-    /* not used anymore, we keep it for compatibility */
     tb->time_of_the_day_ns = qemu_clock_get_ns(QEMU_CLOCK_HOST);
-    /*
-     * tb_offset is only expected to be changed by QEMU so
-     * there is no need to update it from KVM here
-     */
-    tb->guest_timebase = ticks + first_ppc_cpu->env.tb_env->tb_offset;
 }
 
 static void timebase_load(PPCTimebase *tb)
 {
     CPUState *cpu;
     PowerPCCPU *first_ppc_cpu = POWERPC_CPU(first_cpu);
-    int64_t tb_off_adj, tb_off;
+    int64_t tb_off_ns, tb_off_adj, tb_off;
+    double ns_per_tb_tick;
     unsigned long freq;
 
     if (!first_ppc_cpu->env.tb_env) {
@@ -894,11 +888,13 @@ static void timebase_load(PPCTimebase *tb)
 
     freq = first_ppc_cpu->env.tb_env->tb_freq;
 
-    tb_off_adj = tb->guest_timebase - cpu_get_host_ticks();
-
+    tb_off_ns = tb->time_of_the_day_ns - qemu_clock_get_ns(QEMU_CLOCK_HOST);
+    ns_per_tb_tick = 1000000000UL / freq;
     tb_off = first_ppc_cpu->env.tb_env->tb_offset;
+    tb_off_adj = tb_off + (int64_t)((double)tb_off_ns / ns_per_tb_tick);
+
     trace_ppc_tb_adjust(tb_off, tb_off_adj, tb_off_adj - tb_off,
-                        (double)(tb_off_adj - tb_off) / freq);
+                        (double)(tb_off_ns) / 1000000000UL);
 
     /* Set new offset to all CPUs */
     CPU_FOREACH(cpu) {
