@@ -55,6 +55,29 @@
 
 #define NDRV_VGA_FILENAME "qemu_vga.ndrv"
 
+/* Machine */
+typedef struct PPCHeathrowMachineState {
+    /*< private >*/
+    MachineState parent_obj;
+
+    struct PPCTimebase ppc_tb;
+} PPCHeathrowMachineState;
+
+#define TYPE_PPC_HEATHROW_MACHINE      MACHINE_TYPE_NAME("g3beige")
+#define PPC_HEATHROW_MACHINE(obj) \
+    OBJECT_CHECK(PPCHeathrowMachineState, (obj), TYPE_PPC_HEATHROW_MACHINE)
+
+static const VMStateDescription vmstate_ppc_heathrow_machine = {
+    .name = "ppc_heathrow_machine",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .fields = (VMStateField[]) {
+        VMSTATE_PPC_TIMEBASE_V(ppc_tb, PPCHeathrowMachineState, 0),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+
 static void fw_cfg_boot_set(void *opaque, const char *boot_device,
                             Error **errp)
 {
@@ -80,6 +103,8 @@ static void ppc_heathrow_reset(void *opaque)
 
 static void ppc_heathrow_init(MachineState *machine)
 {
+    PPCHeathrowMachineState *ppc_heathrow_machine = PPC_HEATHROW_MACHINE(machine);
+
     ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
@@ -112,6 +137,9 @@ static void ppc_heathrow_init(MachineState *machine)
 
     linux_boot = (kernel_filename != NULL);
 
+    /* add vmstate handler */
+    vmstate_register(NULL, 0, &vmstate_ppc_heathrow_machine, ppc_heathrow_machine);
+    
     /* init CPUs */
     if (machine->cpu_model == NULL)
         machine->cpu_model = "G3";
@@ -127,6 +155,9 @@ static void ppc_heathrow_init(MachineState *machine)
         /* Set time-base frequency to 16.6 Mhz */
         cpu_ppc_tb_init(env,  TBFREQ);
         qemu_register_reset(ppc_heathrow_reset, cpu);
+
+        qemu_add_vm_change_state_handler(cpu_ppc_clock_vm_state_change,
+                                         &ppc_heathrow_machine->ppc_tb);
     }
 
     /* allocate RAM */
@@ -399,7 +430,8 @@ static void heathrow_class_init(ObjectClass *oc, void *data)
 static const TypeInfo ppc_heathrow_machine_info = {
     .name          = MACHINE_TYPE_NAME("g3beige"),
     .parent        = TYPE_MACHINE,
-    .class_init    = heathrow_class_init
+    .class_init    = heathrow_class_init,
+    .instance_size = sizeof(PPCHeathrowMachineState)
 };
 
 static void ppc_heathrow_register_types(void)
