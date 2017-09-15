@@ -196,7 +196,7 @@ static void ppc_core99_init(MachineState *machine)
         env = &cpu->env;
 
         /* Set time-base frequency to 100 Mhz */
-        cpu_ppc_tb_init(env, TBFREQ);
+        cpu_ppc_tb_init(env, TBFREQ, NULL);
         qemu_register_reset(ppc_core99_reset, cpu);
     }
 

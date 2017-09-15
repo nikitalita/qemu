@@ -530,10 +530,10 @@ static void ppc_prep_init(MachineState *machine)
 
         if (env->flags & POWERPC_FLAG_RTC_CLK) {
             /* POWER / PowerPC 601 RTC clock frequency is 7.8125 MHz */
-            cpu_ppc_tb_init(env, 7812500UL);
+            cpu_ppc_tb_init(env, 7812500UL, NULL);
         } else {
             /* Set time-base frequency to 100 Mhz */
-            cpu_ppc_tb_init(env, 100UL * 1000UL * 1000UL);
+            cpu_ppc_tb_init(env, 100UL * 1000UL * 1000UL, NULL);
         }
         qemu_register_reset(ppc_prep_reset, cpu);
     }
@@ -739,10 +739,10 @@ static void ibm_40p_init(MachineState *machine)
 
     if (env->flags & POWERPC_FLAG_RTC_CLK) {
         /* POWER / PowerPC 601 RTC clock frequency is 7.8125 MHz */
-        cpu_ppc_tb_init(env, 7812500UL);
+        cpu_ppc_tb_init(env, 7812500UL, NULL);
     } else {
         /* Set time-base frequency to 100 Mhz */
-        cpu_ppc_tb_init(env, 100UL * 1000UL * 1000UL);
+        cpu_ppc_tb_init(env, 100UL * 1000UL * 1000UL, NULL);
     }
     qemu_register_reset(ppc_prep_reset, cpu);
 

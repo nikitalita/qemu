@@ -113,7 +113,7 @@ static void spapr_cpu_init(sPAPRMachineState *spapr, PowerPCCPU *cpu,
     CPUPPCState *env = &cpu->env;
 
     /* Set time-base frequency to 512 MHz */
-    cpu_ppc_tb_init(env, SPAPR_TIMEBASE_FREQ);
+    cpu_ppc_tb_init(env, SPAPR_TIMEBASE_FREQ, NULL);
 
     /* Enable PAPR mode in TCG or KVM */
     cpu_ppc_set_papr(cpu, PPC_VIRTUAL_HYPERVISOR(spapr));

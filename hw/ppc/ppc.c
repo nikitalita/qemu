@@ -958,7 +958,7 @@ const VMStateDescription vmstate_ppc_timebase = {
 };
 
 /* Set up (once) timebase frequency (in Hz) */
-clk_setup_cb cpu_ppc_tb_init (CPUPPCState *env, uint32_t freq)
+clk_setup_cb cpu_ppc_tb_init (CPUPPCState *env, uint32_t freq, PPCTimebase *ppc_tb)
 {
     PowerPCCPU *cpu = ppc_env_get_cpu(env);
     ppc_tb_t *tb_env;
@@ -979,6 +979,10 @@ clk_setup_cb cpu_ppc_tb_init (CPUPPCState *env, uint32_t freq)
         tb_env->hdecr_timer = NULL;
     }
     cpu_ppc_set_tb_clk(env, freq);
+    
+    if (ppc_tb) {
+        timebase_save(ppc_tb);
+    }
 
     return &cpu_ppc_set_tb_clk;
 }

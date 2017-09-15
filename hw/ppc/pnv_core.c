@@ -61,7 +61,7 @@ static void powernv_cpu_init(PowerPCCPU *cpu, Error **errp)
     pir->default_value = core_pir + thread_index;
 
     /* Set time-base frequency to 512 MHz */
-    cpu_ppc_tb_init(env, PNV_TIMEBASE_FREQ);
+    cpu_ppc_tb_init(env, PNV_TIMEBASE_FREQ, NULL);
 
     qemu_register_reset(powernv_cpu_reset, cpu);
 }

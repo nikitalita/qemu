@@ -153,7 +153,7 @@ static void ppc_heathrow_init(MachineState *machine)
         env = &cpu->env;
 
         /* Set time-base frequency to 16.6 Mhz */
-        cpu_ppc_tb_init(env,  TBFREQ);
+        cpu_ppc_tb_init(env,  TBFREQ, &ppc_heathrow_machine->ppc_tb);
         qemu_register_reset(ppc_heathrow_reset, cpu);
 
         qemu_add_vm_change_state_handler(cpu_ppc_clock_vm_state_change,
