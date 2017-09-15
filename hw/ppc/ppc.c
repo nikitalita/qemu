@@ -898,7 +898,7 @@ static void timebase_load(PPCTimebase *tb)
 
     tb_off = first_ppc_cpu->env.tb_env->tb_offset;
     trace_ppc_tb_adjust(tb_off, tb_off_adj, tb_off_adj - tb_off,
-                        (tb_off_adj - tb_off) / freq);
+                        (double)(tb_off_adj - tb_off) / freq);
 
     /* Set new offset to all CPUs */
     CPU_FOREACH(cpu) {
