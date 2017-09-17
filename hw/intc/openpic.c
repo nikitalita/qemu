@@ -1575,6 +1575,9 @@ static const VMStateDescription vmstate_openpic_timer = {
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(tccr, OpenPICTimer),
         VMSTATE_UINT32(tbcr, OpenPICTimer),
+        VMSTATE_BOOL(qemu_timer_active, OpenPICTimer),
+        VMSTATE_TIMER_PTR(qemu_timer, OpenPICTimer),
+        VMSTATE_UINT64(origin_time, OpenPICTimer),
         VMSTATE_END_OF_LIST()
     }
 };
