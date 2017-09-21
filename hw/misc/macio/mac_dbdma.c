@@ -544,11 +544,10 @@ void DBDMA_kick(DBDMAState *dbdma)
     qemu_bh_schedule(dbdma->bh);
 }
 
-void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
-                            DBDMA_rw rw, DBDMA_flush flush,
-                            void *opaque)
+static void
+dbdma_register_channel(DBDMAState *s, int nchan, qemu_irq irq,
+                       DBDMA_rw rw, DBDMA_flush flush, void *opaque)
 {
-    DBDMAState *s = dbdma;
     DBDMA_channel *ch = &s->channels[nchan];
 
     DBDMA_DPRINTFCH(ch, "DBDMA_register_channel 0x%x\n", nchan);
@@ -816,6 +815,8 @@ static void mac_dbdma_init(Object *obj)
 
     memory_region_init_io(&s->mem, obj, &dbdma_ops, s, "dbdma", 0x1000);
     sysbus_init_mmio(sbd, &s->mem);
+
+    s->register_channel = dbdma_register_channel;
 }
 
 static void mac_dbdma_realize(DeviceState *dev, Error **errp)

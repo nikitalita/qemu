@@ -160,19 +160,18 @@ typedef struct DBDMA_channel {
     dbdma_cmd current;
 } DBDMA_channel;
 
-typedef struct {
+typedef struct DBDMAState {
     SysBusDevice parent_obj;
 
     MemoryRegion mem;
     DBDMA_channel channels[DBDMA_CHANNELS];
     QEMUBH *bh;
+
+    void (*register_channel)(struct DBDMAState *s, int nchan, qemu_irq irq,
+                             DBDMA_rw rw, DBDMA_flush flush, void *opaque);
 } DBDMAState;
 
 /* Externally callable functions */
-
-void DBDMA_register_channel(void *dbdma, int nchan, qemu_irq irq,
-                            DBDMA_rw rw, DBDMA_flush flush,
-                            void *opaque);
 void DBDMA_kick(DBDMAState *dbdma);
 
 #define TYPE_MAC_DBDMA "mac-dbdma"

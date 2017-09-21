@@ -425,12 +425,18 @@ static const IDEDMAOps dbdma_ops = {
 static void macio_ide_realizefn(DeviceState *dev, Error **errp)
 {
     MACIOIDEState *s = MACIO_IDE(dev);
+    DBDMAState *dbdma;
 
     ide_init2(&s->bus, s->irq);
 
     /* Register DMA callbacks */
     s->dma.ops = &dbdma_ops;
     s->bus.dma = &s->dma;
+
+    /* Register DBDMA channel */
+    dbdma = MAC_DBDMA(object_property_get_link(OBJECT(dev), "dbdma", errp));
+    dbdma->register_channel(dbdma, s->channel, s->dma_irq,
+                            pmac_ide_transfer, pmac_ide_flush, s);
 }
 
 static void macio_ide_initfn(Object *obj)
@@ -488,12 +494,6 @@ void macio_ide_init_drives(MACIOIDEState *s, DriveInfo **hd_table)
             ide_create_drive(&s->bus, i, hd_table[i]);
         }
     }
-}
-
-void macio_ide_register_dma(MACIOIDEState *s)
-{
-    DBDMA_register_channel(s->dbdma, s->channel, s->dma_irq,
-                           pmac_ide_transfer, pmac_ide_flush, s);
 }
 
 type_init(macio_ide_register_types)
