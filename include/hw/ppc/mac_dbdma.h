@@ -169,10 +169,8 @@ typedef struct DBDMAState {
 
     void (*register_channel)(struct DBDMAState *s, int nchan, qemu_irq irq,
                              DBDMA_rw rw, DBDMA_flush flush, void *opaque);
+    void (*kick)(struct DBDMAState *s);
 } DBDMAState;
-
-/* Externally callable functions */
-void DBDMA_kick(DBDMAState *dbdma);
 
 #define TYPE_MAC_DBDMA "mac-dbdma"
 #define MAC_DBDMA(obj) OBJECT_CHECK(DBDMAState, (obj), TYPE_MAC_DBDMA)

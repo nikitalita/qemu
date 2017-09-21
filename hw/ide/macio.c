@@ -398,6 +398,7 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
                             BlockCompletionFunc *cb)
 {
     MACIOIDEState *m = container_of(dma, MACIOIDEState, dma);
+    DBDMAState *dbdma = (DBDMAState *)m->dbdma;
 
     s->io_buffer_index = 0;
     if (s->drive_kind == IDE_CD) {
@@ -413,7 +414,7 @@ static void ide_dbdma_start(IDEDMA *dma, IDEState *s,
     MACIO_DPRINTF("-------------------------\n");
 
     m->dma_active = true;
-    DBDMA_kick(m->dbdma);
+    dbdma->kick(dbdma);
 }
 
 static const IDEDMAOps dbdma_ops = {

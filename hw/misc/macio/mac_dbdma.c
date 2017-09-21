@@ -294,6 +294,12 @@ wait:
         channel_run(ch);
 }
 
+
+static void dbdma_kick(DBDMAState *dbdma)
+{
+    qemu_bh_schedule(dbdma->bh);
+}
+
 static void start_output(DBDMA_channel *ch, int key, uint32_t addr,
                         uint16_t req_count, int is_last)
 {
@@ -374,7 +380,7 @@ static void load_word(DBDMA_channel *ch, int key, uint32_t addr,
     next(ch);
 
 wait:
-    DBDMA_kick(dbdma_from_ch(ch));
+    dbdma_kick(dbdma_from_ch(ch));
 }
 
 static void store_word(DBDMA_channel *ch, int key, uint32_t addr,
@@ -406,7 +412,7 @@ static void store_word(DBDMA_channel *ch, int key, uint32_t addr,
     next(ch);
 
 wait:
-    DBDMA_kick(dbdma_from_ch(ch));
+    dbdma_kick(dbdma_from_ch(ch));
 }
 
 static void nop(DBDMA_channel *ch)
@@ -423,7 +429,7 @@ static void nop(DBDMA_channel *ch)
     conditional_branch(ch);
 
 wait:
-    DBDMA_kick(dbdma_from_ch(ch));
+    dbdma_kick(dbdma_from_ch(ch));
 }
 
 static void stop(DBDMA_channel *ch)
@@ -539,11 +545,6 @@ static void DBDMA_run_bh(void *opaque)
     DBDMA_DPRINTF("<- DBDMA_run_bh\n");
 }
 
-void DBDMA_kick(DBDMAState *dbdma)
-{
-    qemu_bh_schedule(dbdma->bh);
-}
-
 static void
 dbdma_register_channel(DBDMAState *s, int nchan, qemu_irq irq,
                        DBDMA_rw rw, DBDMA_flush flush, void *opaque)
@@ -599,7 +600,7 @@ dbdma_control_write(DBDMA_channel *ch)
     ch->regs[DBDMA_STATUS] = status;
 
     if (status & ACTIVE) {
-        DBDMA_kick(dbdma_from_ch(ch));
+        dbdma_kick(dbdma_from_ch(ch));
     }
 }
 
@@ -817,6 +818,7 @@ static void mac_dbdma_init(Object *obj)
     sysbus_init_mmio(sbd, &s->mem);
 
     s->register_channel = dbdma_register_channel;
+    s->kick = dbdma_kick;
 }
 
 static void mac_dbdma_realize(DeviceState *dev, Error **errp)
