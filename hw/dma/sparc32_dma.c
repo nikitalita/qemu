@@ -29,6 +29,7 @@
 #include "hw/hw.h"
 #include "hw/sparc/sparc32_dma.h"
 #include "hw/sysbus.h"
+#include "sysemu/dma.h"
 #include "qapi/error.h"
 #include "trace.h"
 
@@ -70,16 +71,17 @@ void ledma_memory_read(void *opaque, hwaddr addr,
                        uint8_t *buf, int len, int do_bswap)
 {
     DMADeviceState *s = opaque;
+    IOMMUState *is = (IOMMUState *)s->iommu;
     int i;
 
     addr |= s->dmaregs[3];
     trace_ledma_memory_read(addr, len);
     if (do_bswap) {
-        sparc_iommu_memory_read(s->iommu, addr, buf, len);
+        dma_memory_read(&is->iommu_as, addr, buf, len);
     } else {
         addr &= ~1;
         len &= ~1;
-        sparc_iommu_memory_read(s->iommu, addr, buf, len);
+        dma_memory_read(&is->iommu_as, addr, buf, len);
         for(i = 0; i < len; i += 2) {
             bswap16s((uint16_t *)(buf + i));
         }
@@ -90,13 +92,14 @@ void ledma_memory_write(void *opaque, hwaddr addr,
                         uint8_t *buf, int len, int do_bswap)
 {
     DMADeviceState *s = opaque;
+    IOMMUState *is = (IOMMUState *)s->iommu;
     int l, i;
     uint16_t tmp_buf[32];
 
     addr |= s->dmaregs[3];
     trace_ledma_memory_write(addr, len);
     if (do_bswap) {
-        sparc_iommu_memory_write(s->iommu, addr, buf, len);
+        dma_memory_write(&is->iommu_as, addr, buf, len);
     } else {
         addr &= ~1;
         len &= ~1;
@@ -107,7 +110,7 @@ void ledma_memory_write(void *opaque, hwaddr addr,
             for(i = 0; i < l; i += 2) {
                 tmp_buf[i >> 1] = bswap16(*(uint16_t *)(buf + i));
             }
-            sparc_iommu_memory_write(s->iommu, addr, (uint8_t *)tmp_buf, l);
+            dma_memory_write(&is->iommu_as, addr, tmp_buf, l);
             len -= l;
             buf += l;
             addr += l;
@@ -138,18 +141,20 @@ static void dma_set_irq(void *opaque, int irq, int level)
 void espdma_memory_read(void *opaque, uint8_t *buf, int len)
 {
     DMADeviceState *s = opaque;
+    IOMMUState *is = (IOMMUState *)s->iommu;
 
     trace_espdma_memory_read(s->dmaregs[1], len);
-    sparc_iommu_memory_read(s->iommu, s->dmaregs[1], buf, len);
+    dma_memory_read(&is->iommu_as, s->dmaregs[1], buf, len);
     s->dmaregs[1] += len;
 }
 
 void espdma_memory_write(void *opaque, uint8_t *buf, int len)
 {
     DMADeviceState *s = opaque;
+    IOMMUState *is = (IOMMUState *)s->iommu;
 
     trace_espdma_memory_write(s->dmaregs[1], len);
-    sparc_iommu_memory_write(s->iommu, s->dmaregs[1], buf, len);
+    dma_memory_write(&is->iommu_as, s->dmaregs[1], buf, len);
     s->dmaregs[1] += len;
 }
 
