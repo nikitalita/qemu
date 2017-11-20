@@ -119,7 +119,7 @@ static inline void pbm_clear_request(APBState *s, unsigned int irq_num)
     s->irq_request = NO_IRQ_REQUEST;
 }
 
-static AddressSpace *pbm_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
+static AddressSpace *sabre_pci_dma_iommu(PCIBus *bus, void *opaque, int devfn)
 {
     IOMMUState *is = opaque;
 
@@ -393,12 +393,12 @@ static void apb_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(get_system_memory(), s->mem_base,
                                 &s->pci_mmio);
 
-    pci_create_simple(phb->bus, 0, "pbm-pci");
+    pci_create_simple(phb->bus, 0, "sabre");
 
     /* APB IOMMU */
     memory_region_add_subregion_overlap(&s->apb_config, 0x200,
                     sysbus_mmio_get_region(SYS_BUS_DEVICE(s->iommu), 0), 1);
-    pci_setup_iommu(phb->bus, pbm_pci_dma_iommu, s->iommu);
+    pci_setup_iommu(phb->bus, sabre_pci_dma_iommu, s->iommu);
 
     /* APB secondary busses */
     pci_dev = pci_create_multifunction(phb->bus, PCI_DEVFN(1, 0), true,
@@ -465,7 +465,7 @@ static void apb_init(Object *obj)
     sysbus_init_mmio(sbd, &s->pci_ioport);
 }
 
-static void pbm_pci_host_realize(PCIDevice *d, Error **errp)
+static void sabre_realize(PCIDevice *d, Error **errp)
 {
     pci_set_word(d->config + PCI_COMMAND,
                  PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
@@ -474,12 +474,12 @@ static void pbm_pci_host_realize(PCIDevice *d, Error **errp)
                  PCI_STATUS_DEVSEL_MEDIUM);
 }
 
-static void pbm_pci_host_class_init(ObjectClass *klass, void *data)
+static void sabre_class_init(ObjectClass *klass, void *data)
 {
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    k->realize = pbm_pci_host_realize;
+    k->realize = sabre_realize;
     k->vendor_id = PCI_VENDOR_ID_SUN;
     k->device_id = PCI_DEVICE_ID_SUN_SABRE;
     k->class_id = PCI_CLASS_BRIDGE_HOST;
@@ -490,11 +490,11 @@ static void pbm_pci_host_class_init(ObjectClass *klass, void *data)
     dc->user_creatable = false;
 }
 
-static const TypeInfo pbm_pci_host_info = {
-    .name          = "pbm-pci",
+static const TypeInfo sabre_info = {
+    .name          = "sabre",
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(PCIDevice),
-    .class_init    = pbm_pci_host_class_init,
+    .class_init    = sabre_class_init,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
@@ -528,7 +528,7 @@ static const TypeInfo apb_info = {
 static void apb_register_types(void)
 {
     type_register_static(&apb_info);
-    type_register_static(&pbm_pci_host_info);
+    type_register_static(&sabre_info);
 }
 
 type_init(apb_register_types)
