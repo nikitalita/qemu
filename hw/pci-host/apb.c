@@ -39,16 +39,7 @@
 #include "exec/address-spaces.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
-
-/* debug APB */
-//#define DEBUG_APB
-
-#ifdef DEBUG_APB
-#define APB_DPRINTF(fmt, ...) \
-do { printf("APB: " fmt , ## __VA_ARGS__); } while (0)
-#else
-#define APB_DPRINTF(fmt, ...)
-#endif
+#include "trace.h"
 
 /*
  * Chipset docs:
@@ -75,8 +66,7 @@ do { printf("APB: " fmt , ## __VA_ARGS__); } while (0)
 
 static inline void pbm_set_request(APBState *s, unsigned int irq_num)
 {
-    APB_DPRINTF("%s: request irq %d\n", __func__, irq_num);
-
+    trace_apb_pbm_set_request(irq_num);
     s->irq_request = irq_num;
     qemu_set_irq(s->ivec_irqs[irq_num], 1);
 }
@@ -114,7 +104,7 @@ static inline void pbm_check_irqs(APBState *s)
 
 static inline void pbm_clear_request(APBState *s, unsigned int irq_num)
 {
-    APB_DPRINTF("%s: clear request irq %d\n", __func__, irq_num);
+    trace_apb_pbm_clear_request(irq_num);
     qemu_set_irq(s->ivec_irqs[irq_num], 0);
     s->irq_request = NO_IRQ_REQUEST;
 }
@@ -131,7 +121,7 @@ static void apb_config_writel (void *opaque, hwaddr addr,
 {
     APBState *s = opaque;
 
-    APB_DPRINTF("%s: addr " TARGET_FMT_plx " val %" PRIx64 "\n", __func__, addr, val);
+    trace_apb_config_writel(addr, val);
 
     switch (addr & 0xffff) {
     case 0x30 ... 0x4f: /* DMA error registers */
@@ -255,7 +245,7 @@ static uint64_t apb_config_readl (void *opaque,
         val = 0;
         break;
     }
-    APB_DPRINTF("%s: addr " TARGET_FMT_plx " -> %x\n", __func__, addr, val);
+    trace_apb_config_readl(addr, val);
 
     return val;
 }
@@ -272,7 +262,7 @@ static void apb_pci_config_write(void *opaque, hwaddr addr,
     APBState *s = opaque;
     PCIHostState *phb = PCI_HOST_BRIDGE(s);
 
-    APB_DPRINTF("%s: addr " TARGET_FMT_plx " val %" PRIx64 "\n", __func__, addr, val);
+    trace_apb_pci_config_write(addr, val);
     pci_data_write(phb->bus, addr, val, size);
 }
 
@@ -284,7 +274,7 @@ static uint64_t apb_pci_config_read(void *opaque, hwaddr addr,
     PCIHostState *phb = PCI_HOST_BRIDGE(s);
 
     ret = pci_data_read(phb->bus, addr, size);
-    APB_DPRINTF("%s: addr " TARGET_FMT_plx " -> %x\n", __func__, addr, ret);
+    trace_apb_pci_config_read(addr, ret);
     return ret;
 }
 
@@ -322,7 +312,8 @@ static void pci_apb_set_irq(void *opaque, int irq_num, int level)
 {
     APBState *s = opaque;
 
-    APB_DPRINTF("%s: set irq_in %d level %d\n", __func__, irq_num, level);
+    trace_apb_pci_apb_set_irq(irq_num, level);
+
     /* PCI IRQ map onto the first 32 INO.  */
     if (irq_num < 32) {
         if (level) {
@@ -336,7 +327,7 @@ static void pci_apb_set_irq(void *opaque, int irq_num, int level)
     } else {
         /* OBIO IRQ map onto the next 32 INO.  */
         if (level) {
-            APB_DPRINTF("%s: set irq %d level %d\n", __func__, irq_num, level);
+            trace_apb_pci_apb_set_obio_irq(irq_num, level);
             s->pci_irq_in |= 1ULL << irq_num;
             if ((s->irq_request == NO_IRQ_REQUEST)
                 && (s->obio_irq_map[irq_num - 32] & PBM_PCI_IMR_ENABLED)) {

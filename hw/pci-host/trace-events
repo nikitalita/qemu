@@ -1,1 +1,11 @@
 # See docs/devel/tracing.txt for syntax documentation.
+
+# hw/pci-host/apb.c
+apb_pbm_set_request(int irq_num) "request irq %d"
+apb_pbm_clear_request(int irq_num) "clear request irq %d"
+apb_config_writel(uint64_t addr, uint64_t val) "addr 0x%"PRIx64" val 0x%"PRIx64
+apb_config_readl(uint64_t addr, uint64_t val) "addr 0x%"PRIx64" val 0x%"PRIx64
+apb_pci_config_write(uint64_t addr, uint64_t val) "addr 0x%"PRIx64" val 0x%"PRIx64
+apb_pci_config_read(uint64_t addr, uint64_t val) "addr 0x%"PRIx64" val 0x%"PRIx64
+apb_pci_apb_set_irq(int irq_num, int level) "set irq_in %d level %d"
+apb_pci_apb_set_obio_irq(int irq_num, int level) "set irq %d level %d"
