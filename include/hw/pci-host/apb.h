@@ -14,8 +14,7 @@
 #define OBIO_MSE_IRQ         0x2a
 #define OBIO_SER_IRQ         0x2b
 
-#define TYPE_APB "pbm"
-
+#define TYPE_APB "apb"
 #define APB_DEVICE(obj) \
     OBJECT_CHECK(APBState, (obj), TYPE_APB)
 

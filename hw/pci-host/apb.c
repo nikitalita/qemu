@@ -83,7 +83,6 @@ static inline void pbm_set_request(APBState *s, unsigned int irq_num)
 
 static inline void pbm_check_irqs(APBState *s)
 {
-
     unsigned int i;
 
     /* Previous request is not acknowledged, resubmit */
@@ -349,7 +348,7 @@ static void pci_apb_set_irq(void *opaque, int irq_num, int level)
     }
 }
 
-static void pci_pbm_reset(DeviceState *d)
+static void apb_reset(DeviceState *d)
 {
     unsigned int i;
     APBState *s = APB_DEVICE(d);
@@ -376,7 +375,7 @@ static const MemoryRegionOps pci_config_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
-static void pci_pbm_realize(DeviceState *dev, Error **errp)
+static void apb_realize(DeviceState *dev, Error **errp)
 {
     APBState *s = APB_DEVICE(dev);
     PCIHostState *phb = PCI_HOST_BRIDGE(dev);
@@ -415,7 +414,7 @@ static void pci_pbm_realize(DeviceState *dev, Error **errp)
     qdev_init_nofail(&pci_dev->qdev);
 }
 
-static void pci_pbm_init(Object *obj)
+static void apb_init(Object *obj)
 {
     APBState *s = APB_DEVICE(obj);
     PCIHostState *phb = PCI_HOST_BRIDGE(obj);
@@ -502,34 +501,34 @@ static const TypeInfo pbm_pci_host_info = {
     },
 };
 
-static Property pbm_pci_host_properties[] = {
+static Property apb_properties[] = {
     DEFINE_PROP_UINT64("special-base", APBState, special_base, 0),
     DEFINE_PROP_UINT64("mem-base", APBState, mem_base, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pbm_host_class_init(ObjectClass *klass, void *data)
+static void apb_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->realize = pci_pbm_realize;
-    dc->reset = pci_pbm_reset;
-    dc->props = pbm_pci_host_properties;
+    dc->realize = apb_realize;
+    dc->reset = apb_reset;
+    dc->props = apb_properties;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
 }
 
-static const TypeInfo pbm_host_info = {
+static const TypeInfo apb_info = {
     .name          = TYPE_APB,
     .parent        = TYPE_PCI_HOST_BRIDGE,
     .instance_size = sizeof(APBState),
-    .instance_init = pci_pbm_init,
-    .class_init    = pbm_host_class_init,
+    .instance_init = apb_init,
+    .class_init    = apb_class_init,
 };
 
-static void pbm_register_types(void)
+static void apb_register_types(void)
 {
-    type_register_static(&pbm_host_info);
+    type_register_static(&apb_info);
     type_register_static(&pbm_pci_host_info);
 }
 
-type_init(pbm_register_types)
+type_init(apb_register_types)
