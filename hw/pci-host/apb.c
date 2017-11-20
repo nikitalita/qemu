@@ -393,7 +393,7 @@ static void apb_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(get_system_memory(), s->mem_base,
                                 &s->pci_mmio);
 
-    pci_create_simple(phb->bus, 0, "sabre");
+    pci_create_simple(phb->bus, 0, TYPE_SABRE);
 
     /* APB IOMMU */
     memory_region_add_subregion_overlap(&s->apb_config, 0x200,
@@ -491,9 +491,9 @@ static void sabre_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo sabre_info = {
-    .name          = "sabre",
+    .name          = TYPE_SABRE,
     .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIDevice),
+    .instance_size = sizeof(SabreState),
     .class_init    = sabre_class_init,
     .interfaces = (InterfaceInfo[]) {
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
