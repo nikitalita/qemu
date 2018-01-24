@@ -406,8 +406,10 @@ static void cuda_writeb(void *opaque, hwaddr addr, uint32_t val)
         break;
     case CUDA_REG_ACR:
         s->acr = val;
-        cuda_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-        cuda_update(s);
+        cuda_timer_update(s, &s->timers[0],
+                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        cuda_timer_update(s, &s->timers[1],
+                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case CUDA_REG_PCR:
         s->pcr = val;
