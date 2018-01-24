@@ -896,8 +896,6 @@ static void cuda_reset(DeviceState *dev)
     set_counter(s, &s->timers[0], 0xffff);
 
     s->timers[1].latch = 0xffff;
-
-    s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
 }
 
 static void cuda_realizefn(DeviceState *dev, Error **errp)
@@ -905,15 +903,12 @@ static void cuda_realizefn(DeviceState *dev, Error **errp)
     CUDAState *s = CUDA(dev);
     struct tm tm;
 
-    s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer1, s);
     s->timers[0].frequency = s->frequency;
-    s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer2, s);
     s->timers[1].frequency = (SCALE_US * 6000) / 4700;
 
     qemu_get_timedate(&tm, 0);
     s->tick_offset = (uint32_t)mktimegm(&tm) + RTC_OFFSET;
 
-    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll, s);
     s->autopoll_rate_ms = 20;
     s->adb_poll_mask = 0xffff;
 }
@@ -932,8 +927,14 @@ static void cuda_initfn(Object *obj)
         s->timers[i].index = i;
     }
 
+    s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer1, s);
+    s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer2, s);
+
+    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll, s);
     qbus_create_inplace(&s->adb_bus, sizeof(s->adb_bus), TYPE_ADB_BUS,
                         DEVICE(obj), "adb.0");
+
+    s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
 }
 
 static Property cuda_properties[] = {
