@@ -130,13 +130,13 @@
 #define CUDA_REG_IER     0x0e
 #define CUDA_REG_ANH     0x0f
 
-static void cuda_update(CUDAState *s);
-static void cuda_receive_packet_from_host(CUDAState *s,
+static void mos6522_update(CUDAState *s);
+static void mos6522_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len);
-static void cuda_timer_update(CUDAState *s, CUDATimer *ti,
+static void mos6522_timer_update(CUDAState *s, CUDATimer *ti,
                               int64_t current_time);
 
-static void cuda_update_irq(CUDAState *s)
+static void mos6522_update_irq(CUDAState *s)
 {
     if (s->ifr & s->ier & (SR_INT | T1_INT | T2_INT)) {
         qemu_irq_raise(s->irq);
@@ -182,7 +182,7 @@ static void set_counter(CUDAState *s, CUDATimer *ti, unsigned int val)
     ti->load_time = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
                              s->frequency, NANOSECONDS_PER_SECOND);
     ti->counter_value = val;
-    cuda_timer_update(s, ti, ti->load_time);
+    mos6522_timer_update(s, ti, ti->load_time);
 }
 
 static int64_t get_next_irq_time(CUDATimer *s, int64_t current_time)
@@ -218,7 +218,7 @@ static int64_t get_next_irq_time(CUDATimer *s, int64_t current_time)
     return next_time;
 }
 
-static void cuda_timer_update(CUDAState *s, CUDATimer *ti,
+static void mos6522_timer_update(CUDAState *s, CUDATimer *ti,
                               int64_t current_time)
 {
     if (!ti->timer)
@@ -231,42 +231,42 @@ static void cuda_timer_update(CUDAState *s, CUDATimer *ti,
     }
 }
 
-static void cuda_timer1(void *opaque)
+static void mos6522_timer1(void *opaque)
 {
     CUDAState *s = opaque;
     CUDATimer *ti = &s->timers[0];
 
-    cuda_timer_update(s, ti, ti->next_irq_time);
+    mos6522_timer_update(s, ti, ti->next_irq_time);
     s->ifr |= T1_INT;
-    cuda_update_irq(s);
+    mos6522_update_irq(s);
 }
 
-static void cuda_timer2(void *opaque)
+static void mos6522_timer2(void *opaque)
 {
     CUDAState *s = opaque;
     CUDATimer *ti = &s->timers[1];
 
-    cuda_timer_update(s, ti, ti->next_irq_time);
+    mos6522_timer_update(s, ti, ti->next_irq_time);
     s->ifr |= T2_INT;
-    cuda_update_irq(s);
+    mos6522_update_irq(s);
 }
 
-static void cuda_set_sr_int(void *opaque)
+static void mos6522_set_sr_int(void *opaque)
 {
     CUDAState *s = opaque;
 
     CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
     s->ifr |= SR_INT;
-    cuda_update_irq(s);
+    mos6522_update_irq(s);
 }
 
-static void cuda_delay_set_sr_int(CUDAState *s)
+static void mos6522_delay_set_sr_int(CUDAState *s)
 {
     int64_t expire;
 
     if (s->dirb == 0xff || s->sr_delay_ns == 0) {
         /* Disabled or not in Mac OS, fire the IRQ directly */
-        cuda_set_sr_int(s);
+        mos6522_set_sr_int(s);
         return;
     }
 
@@ -276,7 +276,7 @@ static void cuda_delay_set_sr_int(CUDAState *s)
     timer_mod(s->sr_delay_timer, expire);
 }
 
-static uint64_t cuda_read(void *opaque, hwaddr addr, unsigned size)
+static uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
 {
     CUDAState *s = opaque;
     uint32_t val;
@@ -298,11 +298,11 @@ static uint64_t cuda_read(void *opaque, hwaddr addr, unsigned size)
     case CUDA_REG_T1CL:
         val = get_counter(&s->timers[0]) & 0xff;
         s->ifr &= ~T1_INT;
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     case CUDA_REG_T1CH:
         val = get_counter(&s->timers[0]) >> 8;
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     case CUDA_REG_T1LL:
         val = s->timers[0].latch & 0xff;
@@ -314,7 +314,7 @@ static uint64_t cuda_read(void *opaque, hwaddr addr, unsigned size)
     case CUDA_REG_T2CL:
         val = get_counter(&s->timers[1]) & 0xff;
         s->ifr &= ~T2_INT;
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     case CUDA_REG_T2CH:
         val = get_counter(&s->timers[1]) >> 8;
@@ -322,7 +322,7 @@ static uint64_t cuda_read(void *opaque, hwaddr addr, unsigned size)
     case CUDA_REG_SR:
         val = s->sr;
         s->ifr &= ~(SR_INT | SR_CLOCK_INT | SR_DATA_INT);
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     case CUDA_REG_ACR:
         val = s->acr;
@@ -351,7 +351,7 @@ static uint64_t cuda_read(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
-static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
+static void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
     CUDAState *s = opaque;
 
@@ -361,7 +361,7 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     switch(addr) {
     case CUDA_REG_B:
         s->b = val;
-        cuda_update(s);
+        mos6522_update(s);
         break;
     case CUDA_REG_A:
         s->a = val;
@@ -374,7 +374,7 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         break;
     case CUDA_REG_T1CL:
         s->timers[0].latch = (s->timers[0].latch & 0xff00) | val;
-        cuda_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        mos6522_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case CUDA_REG_T1CH:
         s->timers[0].latch = (s->timers[0].latch & 0xff) | (val << 8);
@@ -383,12 +383,12 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         break;
     case CUDA_REG_T1LL:
         s->timers[0].latch = (s->timers[0].latch & 0xff00) | val;
-        cuda_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        mos6522_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case CUDA_REG_T1LH:
         s->timers[0].latch = (s->timers[0].latch & 0xff) | (val << 8);
         s->ifr &= ~T1_INT;
-        cuda_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        mos6522_timer_update(s, &s->timers[0], qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case CUDA_REG_T2CL:
         s->timers[1].latch = (s->timers[1].latch & 0xff00) | val;
@@ -406,9 +406,9 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         break;
     case CUDA_REG_ACR:
         s->acr = val;
-        cuda_timer_update(s, &s->timers[0],
+        mos6522_timer_update(s, &s->timers[0],
                           qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-        cuda_timer_update(s, &s->timers[1],
+        mos6522_timer_update(s, &s->timers[1],
                           qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case CUDA_REG_PCR:
@@ -417,7 +417,7 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     case CUDA_REG_IFR:
         /* reset bits */
         s->ifr &= ~val;
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     case CUDA_REG_IER:
         if (val & IER_SET) {
@@ -427,7 +427,7 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
             /* reset bits */
             s->ier &= ~val;
         }
-        cuda_update_irq(s);
+        mos6522_update_irq(s);
         break;
     default:
     case CUDA_REG_ANH:
@@ -437,7 +437,7 @@ static void cuda_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 }
 
 /* NOTE: TIP and TREQ are negated */
-static void cuda_update(CUDAState *s)
+static void mos6522_update(CUDAState *s)
 {
     int packet_received, len;
 
@@ -451,7 +451,7 @@ static void cuda_update(CUDAState *s)
                 if (s->data_out_index < sizeof(s->data_out)) {
                     CUDA_DPRINTF("send: %02x\n", s->sr);
                     s->data_out[s->data_out_index++] = s->sr;
-                    cuda_delay_set_sr_int(s);
+                    mos6522_delay_set_sr_int(s);
                 }
             }
         } else {
@@ -464,7 +464,7 @@ static void cuda_update(CUDAState *s)
                     if (s->data_in_index >= s->data_in_size) {
                         s->b = (s->b | TREQ);
                     }
-                    cuda_delay_set_sr_int(s);
+                    mos6522_delay_set_sr_int(s);
                 }
             }
         }
@@ -476,13 +476,13 @@ static void cuda_update(CUDAState *s)
                 s->b = (s->b | TREQ);
             else
                 s->b = (s->b & ~TREQ);
-            cuda_delay_set_sr_int(s);
+            mos6522_delay_set_sr_int(s);
         } else {
             if (!(s->last_b & TIP)) {
                 /* handle end of host to cuda transfer */
                 packet_received = (s->data_out_index > 0);
                 /* always an IRQ at the end of transfer */
-                cuda_delay_set_sr_int(s);
+                mos6522_delay_set_sr_int(s);
             }
             /* signal if there is data to read */
             if (s->data_in_index < s->data_in_size) {
@@ -494,22 +494,22 @@ static void cuda_update(CUDAState *s)
     s->last_acr = s->acr;
     s->last_b = s->b;
 
-    /* NOTE: cuda_receive_packet_from_host() can call cuda_update()
+    /* NOTE: mos6522_receive_packet_from_host() can call mos6522_update()
        recursively */
     if (packet_received) {
         len = s->data_out_index;
         s->data_out_index = 0;
-        cuda_receive_packet_from_host(s, s->data_out, len);
+        mos6522_receive_packet_from_host(s, s->data_out, len);
     }
 }
 
-static void cuda_send_packet_to_host(CUDAState *s,
+static void mos6522_send_packet_to_host(CUDAState *s,
                                      const uint8_t *data, int len)
 {
 #ifdef DEBUG_CUDA_PACKET
     {
         int i;
-        printf("cuda_send_packet_to_host:\n");
+        printf("mos6522_send_packet_to_host:\n");
         for(i = 0; i < len; i++)
             printf(" %02x", data[i]);
         printf("\n");
@@ -518,11 +518,11 @@ static void cuda_send_packet_to_host(CUDAState *s,
     memcpy(s->data_in, data, len);
     s->data_in_size = len;
     s->data_in_index = 0;
-    cuda_update(s);
-    cuda_delay_set_sr_int(s);
+    mos6522_update(s);
+    mos6522_delay_set_sr_int(s);
 }
 
-static void cuda_adb_poll(void *opaque)
+static void mos6522_adb_poll(void *opaque)
 {
     CUDAState *s = opaque;
     uint8_t obuf[ADB_MAX_OUT_LEN + 2];
@@ -532,7 +532,7 @@ static void cuda_adb_poll(void *opaque)
     if (olen > 0) {
         obuf[0] = ADB_PACKET;
         obuf[1] = 0x40; /* polled data */
-        cuda_send_packet_to_host(s, obuf, olen + 2);
+        mos6522_send_packet_to_host(s, obuf, olen + 2);
     }
     timer_mod(s->adb_poll_timer,
                    qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
@@ -548,7 +548,7 @@ typedef struct CudaCommand {
                     uint8_t *out_args, int *out_len);
 } CudaCommand;
 
-static bool cuda_cmd_autopoll(CUDAState *s,
+static bool mos6522_cmd_autopoll(CUDAState *s,
                               const uint8_t *in_data, int in_len,
                               uint8_t *out_data, int *out_len)
 {
@@ -572,7 +572,7 @@ static bool cuda_cmd_autopoll(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_set_autorate(CUDAState *s,
+static bool mos6522_cmd_set_autorate(CUDAState *s,
                                   const uint8_t *in_data, int in_len,
                                   uint8_t *out_data, int *out_len)
 {
@@ -595,7 +595,7 @@ static bool cuda_cmd_set_autorate(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_set_device_list(CUDAState *s,
+static bool mos6522_cmd_set_device_list(CUDAState *s,
                                      const uint8_t *in_data, int in_len,
                                      uint8_t *out_data, int *out_len)
 {
@@ -607,7 +607,7 @@ static bool cuda_cmd_set_device_list(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_powerdown(CUDAState *s,
+static bool mos6522_cmd_powerdown(CUDAState *s,
                                const uint8_t *in_data, int in_len,
                                uint8_t *out_data, int *out_len)
 {
@@ -619,7 +619,7 @@ static bool cuda_cmd_powerdown(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_reset_system(CUDAState *s,
+static bool mos6522_cmd_reset_system(CUDAState *s,
                                   const uint8_t *in_data, int in_len,
                                   uint8_t *out_data, int *out_len)
 {
@@ -631,7 +631,7 @@ static bool cuda_cmd_reset_system(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_set_file_server_flag(CUDAState *s,
+static bool mos6522_cmd_set_file_server_flag(CUDAState *s,
                                           const uint8_t *in_data, int in_len,
                                           uint8_t *out_data, int *out_len)
 {
@@ -645,7 +645,7 @@ static bool cuda_cmd_set_file_server_flag(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_set_power_message(CUDAState *s,
+static bool mos6522_cmd_set_power_message(CUDAState *s,
                                        const uint8_t *in_data, int in_len,
                                        uint8_t *out_data, int *out_len)
 {
@@ -659,7 +659,7 @@ static bool cuda_cmd_set_power_message(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_get_time(CUDAState *s,
+static bool mos6522_cmd_get_time(CUDAState *s,
                               const uint8_t *in_data, int in_len,
                               uint8_t *out_data, int *out_len)
 {
@@ -679,7 +679,7 @@ static bool cuda_cmd_get_time(CUDAState *s,
     return true;
 }
 
-static bool cuda_cmd_set_time(CUDAState *s,
+static bool mos6522_cmd_set_time(CUDAState *s,
                               const uint8_t *in_data, int in_len,
                               uint8_t *out_data, int *out_len)
 {
@@ -697,20 +697,20 @@ static bool cuda_cmd_set_time(CUDAState *s,
 }
 
 static const CudaCommand handlers[] = {
-    { CUDA_AUTOPOLL, "AUTOPOLL", cuda_cmd_autopoll },
-    { CUDA_SET_AUTO_RATE, "SET_AUTO_RATE",  cuda_cmd_set_autorate },
-    { CUDA_SET_DEVICE_LIST, "SET_DEVICE_LIST", cuda_cmd_set_device_list },
-    { CUDA_POWERDOWN, "POWERDOWN", cuda_cmd_powerdown },
-    { CUDA_RESET_SYSTEM, "RESET_SYSTEM", cuda_cmd_reset_system },
+    { CUDA_AUTOPOLL, "AUTOPOLL", mos6522_cmd_autopoll },
+    { CUDA_SET_AUTO_RATE, "SET_AUTO_RATE",  mos6522_cmd_set_autorate },
+    { CUDA_SET_DEVICE_LIST, "SET_DEVICE_LIST", mos6522_cmd_set_device_list },
+    { CUDA_POWERDOWN, "POWERDOWN", mos6522_cmd_powerdown },
+    { CUDA_RESET_SYSTEM, "RESET_SYSTEM", mos6522_cmd_reset_system },
     { CUDA_FILE_SERVER_FLAG, "FILE_SERVER_FLAG",
-      cuda_cmd_set_file_server_flag },
+      mos6522_cmd_set_file_server_flag },
     { CUDA_SET_POWER_MESSAGES, "SET_POWER_MESSAGES",
-      cuda_cmd_set_power_message },
-    { CUDA_GET_TIME, "GET_TIME", cuda_cmd_get_time },
-    { CUDA_SET_TIME, "SET_TIME", cuda_cmd_set_time },
+      mos6522_cmd_set_power_message },
+    { CUDA_GET_TIME, "GET_TIME", mos6522_cmd_get_time },
+    { CUDA_SET_TIME, "SET_TIME", mos6522_cmd_set_time },
 };
 
-static void cuda_receive_packet(CUDAState *s,
+static void mos6522_receive_packet(CUDAState *s,
                                 const uint8_t *data, int len)
 {
     uint8_t obuf[16] = { CUDA_PACKET, 0, data[0] };
@@ -722,7 +722,7 @@ static void cuda_receive_packet(CUDAState *s,
             CUDA_DPRINTF("handling command %s\n", desc->name);
             out_len = 0;
             if (desc->handler(s, data + 1, len - 1, obuf + 3, &out_len)) {
-                cuda_send_packet_to_host(s, obuf, 3 + out_len);
+                mos6522_send_packet_to_host(s, obuf, 3 + out_len);
             } else {
                 qemu_log_mask(LOG_GUEST_ERROR,
                               "CUDA: %s: wrong parameters %d\n",
@@ -731,7 +731,7 @@ static void cuda_receive_packet(CUDAState *s,
                 obuf[1] = 0x5; /* bad parameters */
                 obuf[2] = CUDA_PACKET;
                 obuf[3] = data[0];
-                cuda_send_packet_to_host(s, obuf, 4);
+                mos6522_send_packet_to_host(s, obuf, 4);
             }
             return;
         }
@@ -742,16 +742,16 @@ static void cuda_receive_packet(CUDAState *s,
     obuf[1] = 0x2; /* unknown command */
     obuf[2] = CUDA_PACKET;
     obuf[3] = data[0];
-    cuda_send_packet_to_host(s, obuf, 4);
+    mos6522_send_packet_to_host(s, obuf, 4);
 }
 
-static void cuda_receive_packet_from_host(CUDAState *s,
+static void mos6522_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len)
 {
 #ifdef DEBUG_CUDA_PACKET
     {
         int i;
-        printf("cuda_receive_packet_from_host:\n");
+        printf("mos6522_receive_packet_from_host:\n");
         for(i = 0; i < len; i++)
             printf(" %02x", data[i]);
         printf("\n");
@@ -766,26 +766,26 @@ static void cuda_receive_packet_from_host(CUDAState *s,
             if (olen > 0) {
                 obuf[0] = ADB_PACKET;
                 obuf[1] = 0x00;
-                cuda_send_packet_to_host(s, obuf, olen + 2);
+                mos6522_send_packet_to_host(s, obuf, olen + 2);
             } else {
                 /* error */
                 obuf[0] = ADB_PACKET;
                 obuf[1] = -olen;
                 obuf[2] = data[1];
                 olen = 0;
-                cuda_send_packet_to_host(s, obuf, olen + 3);
+                mos6522_send_packet_to_host(s, obuf, olen + 3);
             }
         }
         break;
     case CUDA_PACKET:
-        cuda_receive_packet(s, data + 1, len - 1);
+        mos6522_receive_packet(s, data + 1, len - 1);
         break;
     }
 }
 
-static const MemoryRegionOps cuda_ops = {
-    .read = cuda_read,
-    .write = cuda_write,
+static const MemoryRegionOps mos6522_ops = {
+    .read = mos6522_read,
+    .write = mos6522_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid = {
         .min_access_size = 1,
@@ -793,15 +793,15 @@ static const MemoryRegionOps cuda_ops = {
     },
 };
 
-static bool cuda_timer_exist(void *opaque, int version_id)
+static bool mos6522_timer_exist(void *opaque, int version_id)
 {
     CUDATimer *s = opaque;
 
     return s->timer != NULL;
 }
 
-static const VMStateDescription vmstate_cuda_timer = {
-    .name = "cuda_timer",
+static const VMStateDescription vmstate_mos6522_timer = {
+    .name = "mos6522_timer",
     .version_id = 0,
     .minimum_version_id = 0,
     .fields = (VMStateField[]) {
@@ -809,7 +809,7 @@ static const VMStateDescription vmstate_cuda_timer = {
         VMSTATE_UINT16(counter_value, CUDATimer),
         VMSTATE_INT64(load_time, CUDATimer),
         VMSTATE_INT64(next_irq_time, CUDATimer),
-        VMSTATE_TIMER_PTR_TEST(timer, CUDATimer, cuda_timer_exist),
+        VMSTATE_TIMER_PTR_TEST(timer, CUDATimer, mos6522_timer_exist),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -841,14 +841,14 @@ static const VMStateDescription vmstate_cuda = {
         VMSTATE_BUFFER(data_out, CUDAState),
         VMSTATE_UINT32(tick_offset, CUDAState),
         VMSTATE_STRUCT_ARRAY(timers, CUDAState, 2, 1,
-                             vmstate_cuda_timer, CUDATimer),
+                             vmstate_mos6522_timer, CUDATimer),
         VMSTATE_TIMER_PTR(adb_poll_timer, CUDAState),
         VMSTATE_TIMER_PTR(sr_delay_timer, CUDAState),
         VMSTATE_END_OF_LIST()
     }
 };
 
-static void cuda_reset(DeviceState *dev)
+static void mos6522_reset(DeviceState *dev)
 {
     CUDAState *s = CUDA(dev);
 
@@ -874,7 +874,7 @@ static void cuda_reset(DeviceState *dev)
     s->timers[1].latch = 0xffff;
 }
 
-static void cuda_realizefn(DeviceState *dev, Error **errp)
+static void mos6522_realizefn(DeviceState *dev, Error **errp)
 {
     CUDAState *s = CUDA(dev);
     struct tm tm;
@@ -889,13 +889,13 @@ static void cuda_realizefn(DeviceState *dev, Error **errp)
     s->adb_poll_mask = 0xffff;
 }
 
-static void cuda_initfn(Object *obj)
+static void mos6522_initfn(Object *obj)
 {
     SysBusDevice *d = SYS_BUS_DEVICE(obj);
     CUDAState *s = CUDA(obj);
     int i;
 
-    memory_region_init_io(&s->mem, obj, &cuda_ops, s, "cuda", 0x2000);
+    memory_region_init_io(&s->mem, obj, &mos6522_ops, s, "cuda", 0x2000);
     sysbus_init_mmio(d, &s->mem);
     sysbus_init_irq(d, &s->irq);
 
@@ -903,44 +903,44 @@ static void cuda_initfn(Object *obj)
         s->timers[i].index = i;
     }
 
-    s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer1, s);
-    s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_timer2, s);
+    s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer1, s);
+    s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer2, s);
 
-    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll, s);
+    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_adb_poll, s);
     qbus_create_inplace(&s->adb_bus, sizeof(s->adb_bus), TYPE_ADB_BUS,
                         DEVICE(obj), "adb.0");
 
-    s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
+    s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_set_sr_int, s);
 }
 
-static Property cuda_properties[] = {
+static Property mos6522_properties[] = {
     DEFINE_PROP_UINT64("frequency", CUDAState, frequency, 0),
     DEFINE_PROP_UINT64("sr-interrupt-delay-ns", CUDAState, sr_delay_ns, 0),
     DEFINE_PROP_END_OF_LIST()
 };
 
-static void cuda_class_init(ObjectClass *oc, void *data)
+static void mos6522_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    dc->realize = cuda_realizefn;
-    dc->reset = cuda_reset;
+    dc->realize = mos6522_realizefn;
+    dc->reset = mos6522_reset;
     dc->vmsd = &vmstate_cuda;
-    dc->props = cuda_properties;
+    dc->props = mos6522_properties;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
 }
 
-static const TypeInfo cuda_type_info = {
+static const TypeInfo mos6522_type_info = {
     .name = TYPE_CUDA,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(CUDAState),
-    .instance_init = cuda_initfn,
-    .class_init = cuda_class_init,
+    .instance_init = mos6522_initfn,
+    .class_init = mos6522_class_init,
 };
 
-static void cuda_register_types(void)
+static void mos6522_register_types(void)
 {
-    type_register_static(&cuda_type_info);
+    type_register_static(&mos6522_type_info);
 }
 
-type_init(cuda_register_types)
+type_init(mos6522_register_types)
