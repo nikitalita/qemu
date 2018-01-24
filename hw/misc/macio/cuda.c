@@ -264,15 +264,15 @@ static void cuda_delay_set_sr_int(CUDAState *s)
 {
     int64_t expire;
 
-    if (s->dirb == 0xff) {
-        /* Not in Mac OS, fire the IRQ directly */
+    if (s->dirb == 0xff || s->sr_delay_ns == 0) {
+        /* Disabled or not in Mac OS, fire the IRQ directly */
         cuda_set_sr_int(s);
         return;
     }
 
     CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
 
-    expire = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 300 * SCALE_US;
+    expire = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + s->sr_delay_ns;
     timer_mod(s->sr_delay_timer, expire);
 }
 
@@ -915,6 +915,7 @@ static void cuda_initfn(Object *obj)
 
 static Property cuda_properties[] = {
     DEFINE_PROP_UINT64("frequency", CUDAState, frequency, 0),
+    DEFINE_PROP_UINT64("sr-interrupt-delay-ns", CUDAState, sr_delay_ns, 0),
     DEFINE_PROP_END_OF_LIST()
 };
 

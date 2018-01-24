@@ -453,6 +453,7 @@ void macio_init(PCIDevice *d,
        in PearPC */
     qdev_prop_set_uint64(DEVICE(&macio_state->cuda), "frequency",
                          macio_state->frequency);
-
+    qdev_prop_set_uint64(DEVICE(&macio_state->cuda), "sr-interrupt-delay-ns",
+                         300 * SCALE_US);
     qdev_init_nofail(DEVICE(d));
 }
