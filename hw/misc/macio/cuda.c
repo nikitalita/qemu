@@ -145,21 +145,22 @@ static void cuda_update_irq(CUDAState *s)
     }
 }
 
-static uint64_t get_tb(uint64_t time, uint64_t freq)
+static uint64_t get_counter_value(CUDATimer *ti)
 {
-    return muldiv64(time, freq, NANOSECONDS_PER_SECOND);
+    uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
+                                ti->frequency, NANOSECONDS_PER_SECOND) -
+                           ti->load_time;
+
+    /* Reverse of the tb calculation algorithm that Mac OS X uses on bootup */
+    return (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
 }
 
 static unsigned int get_counter(CUDATimer *ti)
 {
     int64_t d;
     unsigned int counter;
-    uint64_t tb_diff;
-    uint64_t current_time = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
-    /* Reverse of the tb calculation algorithm that Mac OS X uses on bootup. */
-    tb_diff = get_tb(current_time, ti->frequency) - ti->load_time;
-    d = (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
+    d = get_counter_value(ti);
 
     if (ti->index == 0) {
         /* the timer goes down from latch to -1 (period of latch + 2) */
@@ -178,8 +179,8 @@ static unsigned int get_counter(CUDATimer *ti)
 static void set_counter(CUDAState *s, CUDATimer *ti, unsigned int val)
 {
     CUDA_DPRINTF("T%d.counter=%d\n", 1 + ti->index, val);
-    ti->load_time = get_tb(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                           s->frequency);
+    ti->load_time = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
+                             s->frequency, NANOSECONDS_PER_SECOND);
     ti->counter_value = val;
     cuda_timer_update(s, ti, ti->load_time);
 }
@@ -190,8 +191,8 @@ static int64_t get_next_irq_time(CUDATimer *s, int64_t current_time)
     unsigned int counter;
 
     /* current counter value */
-    d = muldiv64(current_time - s->load_time,
-                 CUDA_TIMER_FREQ, NANOSECONDS_PER_SECOND);
+    d = get_counter_value(s);
+
     /* the timer goes down from latch to -1 (period of latch + 2) */
     if (d <= (s->counter_value + 1)) {
         counter = (s->counter_value - d) & 0xffff;
@@ -210,8 +211,8 @@ static int64_t get_next_irq_time(CUDATimer *s, int64_t current_time)
     }
     CUDA_DPRINTF("latch=%d counter=%" PRId64 " delta_next=%" PRId64 "\n",
                  s->latch, d, next_time - d);
-    next_time = muldiv64(next_time, NANOSECONDS_PER_SECOND, CUDA_TIMER_FREQ) +
-        s->load_time;
+    next_time = muldiv64(next_time, NANOSECONDS_PER_SECOND, s->frequency) +
+                         s->load_time;
     if (next_time <= current_time)
         next_time = current_time + 1;
     return next_time;
