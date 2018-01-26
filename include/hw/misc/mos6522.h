@@ -32,9 +32,6 @@
 #include "hw/ide/internal.h"
 #include "hw/input/adb.h"
 
-#define TYPE_MOS6522 "cuda"
-#define MOS6522(obj) OBJECT_CHECK(MOS6522State, (obj), TYPE_MOS6522)
-
 /**
  * MOS6522Timer:
  * @counter_value: counter value at load time
@@ -107,5 +104,23 @@ typedef struct MOS6522State {
     uint8_t data_out[16];
     QEMUTimer *adb_poll_timer;
 } MOS6522State;
+
+#define TYPE_MOS6522 "cuda"
+#define MOS6522(obj) OBJECT_CHECK(MOS6522State, (obj), TYPE_MOS6522)
+
+typedef struct MOS6522DeviceClass
+{
+    DeviceClass parent_class;
+
+    void (*portB_write)(MOS6522State *dev);
+    void (*portA_write)(MOS6522State *dev);
+    uint64_t (*get_timer1_counter_value)(MOS6522State *dev);
+    uint64_t (*get_timer2_counter_value)(MOS6522State *dev);
+} MOS6522DeviceClass;
+
+#define MOS6522_DEVICE_CLASS(cls) \
+    OBJECT_CLASS_CHECK(MOS6522DeviceClass, (cls), TYPE_MOS6522)
+#define MOS6522_DEVICE_GET_CLASS(obj) \
+    OBJECT_GET_CLASS(MOS6522DeviceClass, (obj), TYPE_MOS6522)
 
 #endif /* MOS6522_H */
