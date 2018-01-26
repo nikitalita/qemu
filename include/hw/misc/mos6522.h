@@ -115,30 +115,10 @@ typedef struct MOS6522State {
     uint8_t ier;
     uint8_t anh;
 
-    ADBBusState adb_bus;
     MOS6522Timer timers[2];
-
-    uint32_t tick_offset;
     uint64_t frequency;
 
-    uint8_t last_b;
-    uint8_t last_acr;
-
-    /* MacOS 9 is racy and requires a delay upon setting the SR_INT bit */
-    uint64_t sr_delay_ns;
-    QEMUTimer *sr_delay_timer;
-
-    int data_in_size;
-    int data_in_index;
-    int data_out_index;
-
     qemu_irq irq;
-    uint16_t adb_poll_mask;
-    uint8_t autopoll_rate_ms;
-    uint8_t autopoll;
-    uint8_t data_in[128];
-    uint8_t data_out[16];
-    QEMUTimer *adb_poll_timer;
 } MOS6522State;
 
 #define TYPE_MOS6522 "cuda"

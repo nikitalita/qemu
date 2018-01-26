@@ -140,8 +140,9 @@ static int64_t get_next_irq_time(MOS6522State *s, MOS6522Timer *ti,
 static void mos6522_timer_update(MOS6522State *s, MOS6522Timer *ti,
                               int64_t current_time)
 {
-    if (!ti->timer)
+    if (!ti->timer) {
         return;
+    }
     if (ti->index == 0 && (s->acr & T1MODE) != T1MODE_CONT) {
         timer_del(ti->timer);
     } else {
@@ -380,36 +381,23 @@ static const VMStateDescription vmstate_mos6522_timer = {
     }
 };
 
-static const VMStateDescription vmstate_cuda = {
-    .name = "cuda",
-    .version_id = 4,
-    .minimum_version_id = 4,
+static const VMStateDescription vmstate_mos6522 = {
+    .name = "mos6522",
+    .version_id = 0,
+    .minimum_version_id = 0,
     .fields = (VMStateField[]) {
         VMSTATE_UINT8(a, MOS6522State),
         VMSTATE_UINT8(b, MOS6522State),
-        VMSTATE_UINT8(last_b, MOS6522State),
         VMSTATE_UINT8(dira, MOS6522State),
         VMSTATE_UINT8(dirb, MOS6522State),
         VMSTATE_UINT8(sr, MOS6522State),
         VMSTATE_UINT8(acr, MOS6522State),
-        VMSTATE_UINT8(last_acr, MOS6522State),
         VMSTATE_UINT8(pcr, MOS6522State),
         VMSTATE_UINT8(ifr, MOS6522State),
         VMSTATE_UINT8(ier, MOS6522State),
         VMSTATE_UINT8(anh, MOS6522State),
-        VMSTATE_INT32(data_in_size, MOS6522State),
-        VMSTATE_INT32(data_in_index, MOS6522State),
-        VMSTATE_INT32(data_out_index, MOS6522State),
-        VMSTATE_UINT8(autopoll, MOS6522State),
-        VMSTATE_UINT8(autopoll_rate_ms, MOS6522State),
-        VMSTATE_UINT16(adb_poll_mask, MOS6522State),
-        VMSTATE_BUFFER(data_in, MOS6522State),
-        VMSTATE_BUFFER(data_out, MOS6522State),
-        VMSTATE_UINT32(tick_offset, MOS6522State),
         VMSTATE_STRUCT_ARRAY(timers, MOS6522State, 2, 1,
                              vmstate_mos6522_timer, MOS6522Timer),
-        VMSTATE_TIMER_PTR(adb_poll_timer, MOS6522State),
-        VMSTATE_TIMER_PTR(sr_delay_timer, MOS6522State),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -429,10 +417,6 @@ static void mos6522_reset(DeviceState *dev)
     s->ier = 0;
     //    s->ier = T1_INT | SR_INT;
     s->anh = 0;
-    s->data_in_size = 0;
-    s->data_in_index = 0;
-    s->data_out_index = 0;
-    s->autopoll = 0;
 
     s->timers[0].latch = 0xffff;
     set_counter(s, &s->timers[0], 0xffff);
@@ -478,9 +462,8 @@ static void mos6522_class_init(ObjectClass *oc, void *data)
 
     dc->realize = mos6522_realize;
     dc->reset = mos6522_reset;
-    dc->vmsd = &vmstate_cuda;
+    dc->vmsd = &vmstate_mos6522;
     dc->props = mos6522_properties;
-    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
     mdc->set_sr_int = mos6522_set_sr_int;
     mdc->portB_write = mos6522_portB_write;
     mdc->portA_write = mos6522_portA_write;
