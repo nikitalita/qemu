@@ -32,6 +32,42 @@
 #include "hw/ide/internal.h"
 #include "hw/input/adb.h"
 
+/* Bits in ACR */
+#define SR_CTRL            0x1c    /* Shift register control bits */
+#define SR_EXT             0x0c    /* Shift on external clock */
+#define SR_OUT             0x10    /* Shift out if 1 */
+
+/* Bits in IFR and IER */
+#define IER_SET            0x80    /* set bits in IER */
+#define IER_CLR            0       /* clear bits in IER */
+#define SR_INT             0x04    /* Shift register full/empty */
+#define SR_DATA_INT        0x08
+#define SR_CLOCK_INT       0x10
+#define T1_INT             0x40    /* Timer 1 interrupt */
+#define T2_INT             0x20    /* Timer 2 interrupt */
+
+/* Bits in ACR */
+#define T1MODE             0xc0    /* Timer 1 mode */
+#define T1MODE_CONT        0x40    /*  continuous interrupts */
+
+/* VIA registers */
+#define VIA_REG_B       0x00
+#define VIA_REG_A       0x01
+#define VIA_REG_DIRB    0x02
+#define VIA_REG_DIRA    0x03
+#define VIA_REG_T1CL    0x04
+#define VIA_REG_T1CH    0x05
+#define VIA_REG_T1LL    0x06
+#define VIA_REG_T1LH    0x07
+#define VIA_REG_T2CL    0x08
+#define VIA_REG_T2CH    0x09
+#define VIA_REG_SR      0x0a
+#define VIA_REG_ACR     0x0b
+#define VIA_REG_PCR     0x0c
+#define VIA_REG_IFR     0x0d
+#define VIA_REG_IER     0x0e
+#define VIA_REG_ANH     0x0f
+
 /**
  * MOS6522Timer:
  * @counter_value: counter value at load time
@@ -112,10 +148,11 @@ typedef struct MOS6522DeviceClass
 {
     DeviceClass parent_class;
 
+    void (*set_sr_int)(MOS6522State *dev);
     void (*portB_write)(MOS6522State *dev);
     void (*portA_write)(MOS6522State *dev);
-    uint64_t (*get_timer1_counter_value)(MOS6522State *dev);
-    uint64_t (*get_timer2_counter_value)(MOS6522State *dev);
+    uint64_t (*get_timer1_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
+    uint64_t (*get_timer2_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
 } MOS6522DeviceClass;
 
 #define MOS6522_DEVICE_CLASS(cls) \
