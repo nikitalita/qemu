@@ -121,7 +121,7 @@ typedef struct MOS6522State {
     qemu_irq irq;
 } MOS6522State;
 
-#define TYPE_MOS6522 "cuda"
+#define TYPE_MOS6522 "mos6522"
 #define MOS6522(obj) OBJECT_CHECK(MOS6522State, (obj), TYPE_MOS6522)
 
 typedef struct MOS6522DeviceClass

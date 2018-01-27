@@ -26,6 +26,7 @@
 #include "hw/hw.h"
 #include "hw/ppc/mac.h"
 #include "hw/input/adb.h"
+#include "hw/misc/mos6522.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
@@ -68,24 +69,24 @@
 static void cuda_update(CUDAState *s);
 static void cuda_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len);
-
+/*
 static uint64_t get_counter_value(CUDATimer *ti)
 {
     uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
                                 ti->frequency, NANOSECONDS_PER_SECOND) -
                            ti->load_time;
 
-    /* Reverse of the tb calculation algorithm that Mac OS X uses on bootup */
+    // Reverse of the tb calculation algorithm that Mac OS X uses on bootup
     return (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
 }
-
+*/
 static void cuda_delay_set_sr_int(CUDAState *s)
 {
     int64_t expire;
 
     if (s->dirb == 0xff || s->sr_delay_ns == 0) {
         /* Disabled or not in Mac OS, fire the IRQ directly */
-        cuda_set_sr_int(s);
+        //cuda_set_sr_int(s);
         return;
     }
 
@@ -491,15 +492,13 @@ static void cuda_realizefn(DeviceState *dev, Error **errp)
 
 static void cuda_initfn(Object *obj)
 {
-    SysBusDevice *d = SYS_BUS_DEVICE(obj);
     CUDAState *s = CUDA(obj);
-    int i;
 
     s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll, s);
     qbus_create_inplace(&s->adb_bus, sizeof(s->adb_bus), TYPE_ADB_BUS,
                         DEVICE(obj), "adb.0");
 
-    s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
+    //s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
 }
 
 static Property cuda_properties[] = {
@@ -527,8 +526,28 @@ static const TypeInfo cuda_type_info = {
     .class_init = cuda_class_init,
 };
 
+static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
+{
+    //DeviceClass *dc = DEVICE_CLASS(oc);
+
+    
+    //dc->realize = cuda_realizefn;
+    //dc->reset = cuda_reset;
+    //dc->vmsd = &vmstate_cuda;
+    //dc->props = cuda_properties;
+}
+
+static const TypeInfo mos6522_cuda_type_info = {
+    .name = TYPE_MOS6522_CUDA,
+    .parent = TYPE_MOS6522,
+    .instance_size = sizeof(MOS6522State),
+    //.instance_init = mos6522_cuda_init,
+    .class_init = mos6522_cuda_class_init,
+};
+
 static void cuda_register_types(void)
 {
+    type_register_static(&mos6522_cuda_type_info);
     type_register_static(&cuda_type_info);
 }
 

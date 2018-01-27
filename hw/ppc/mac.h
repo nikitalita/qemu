@@ -30,6 +30,7 @@
 #include "hw/sysbus.h"
 #include "hw/ide/internal.h"
 #include "hw/input/adb.h"
+#include "hw/misc/mos6522.h"
 
 /* SMP is not enabled, for now */
 #define MAX_CPUS 1
@@ -43,6 +44,44 @@
 #define KERNEL_GAP       0x00100000
 
 #define ESCC_CLOCK 3686400
+
+/* MOS6522 CUDA */
+typedef struct MOS6522CudaState {
+    /*< private >*/
+    MOS6522State parent_obj;
+} MOS6522CudaState;
+
+#define TYPE_MOS6522_CUDA "mos6522-cuda"
+#define MOS6522_CUDA(obj) OBJECT_CHECK(MOS6522CudaState, (obj), \
+                                       TYPE_MOS6522_CUDA)
+
+/* CUDA commands (2nd byte) */
+#define CUDA_WARM_START                0x0
+#define CUDA_AUTOPOLL                  0x1
+#define CUDA_GET_6805_ADDR             0x2
+#define CUDA_GET_TIME                  0x3
+#define CUDA_GET_PRAM                  0x7
+#define CUDA_SET_6805_ADDR             0x8
+#define CUDA_SET_TIME                  0x9
+#define CUDA_POWERDOWN                 0xa
+#define CUDA_POWERUP_TIME              0xb
+#define CUDA_SET_PRAM                  0xc
+#define CUDA_MS_RESET                  0xd
+#define CUDA_SEND_DFAC                 0xe
+#define CUDA_BATTERY_SWAP_SENSE        0x10
+#define CUDA_RESET_SYSTEM              0x11
+#define CUDA_SET_IPL                   0x12
+#define CUDA_FILE_SERVER_FLAG          0x13
+#define CUDA_SET_AUTO_RATE             0x14
+#define CUDA_GET_AUTO_RATE             0x16
+#define CUDA_SET_DEVICE_LIST           0x19
+#define CUDA_GET_DEVICE_LIST           0x1a
+#define CUDA_SET_ONE_SECOND_MODE       0x1b
+#define CUDA_SET_POWER_MESSAGES        0x21
+#define CUDA_GET_SET_IIC               0x22
+#define CUDA_WAKEUP                    0x23
+#define CUDA_TIMER_TICKLE              0x24
+#define CUDA_COMBINED_FORMAT_IIC       0x25
 
 /* Cuda */
 #define TYPE_CUDA "cuda"
