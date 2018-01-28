@@ -45,16 +45,6 @@
 
 #define ESCC_CLOCK 3686400
 
-/* MOS6522 CUDA */
-typedef struct MOS6522CudaState {
-    /*< private >*/
-    MOS6522State parent_obj;
-} MOS6522CudaState;
-
-#define TYPE_MOS6522_CUDA "mos6522-cuda"
-#define MOS6522_CUDA(obj) OBJECT_CHECK(MOS6522CudaState, (obj), \
-                                       TYPE_MOS6522_CUDA)
-
 /* CUDA commands (2nd byte) */
 #define CUDA_WARM_START                0x0
 #define CUDA_AUTOPOLL                  0x1
@@ -88,20 +78,6 @@ typedef struct MOS6522CudaState {
 #define CUDA(obj) OBJECT_CHECK(CUDAState, (obj), TYPE_CUDA)
 
 /**
- * CUDATimer:
- * @counter_value: counter value at load time
- */
-typedef struct CUDATimer {
-    int index;
-    uint16_t latch;
-    uint16_t counter_value;
-    int64_t load_time;
-    int64_t next_irq_time;
-    uint64_t frequency;
-    QEMUTimer *timer;
-} CUDATimer;
-
-/**
  * CUDAState:
  * @b: B-side data
  * @a: A-side data
@@ -116,26 +92,17 @@ typedef struct CUDATimer {
  * @last_b: last value of B register
  * @last_acr: last value of ACR register
  */
+
+typedef struct MOS6522CUDAState MOS6522CUDAState;
+
 typedef struct CUDAState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
-
     MemoryRegion mem;
-    /* cuda registers */
-    uint8_t b;
-    uint8_t a;
-    uint8_t dirb;
-    uint8_t dira;
-    uint8_t sr;
-    uint8_t acr;
-    uint8_t pcr;
-    uint8_t ifr;
-    uint8_t ier;
-    uint8_t anh;
 
     ADBBusState adb_bus;
-    CUDATimer timers[2];
+    MOS6522CUDAState *mos6522_cuda;
 
     uint32_t tick_offset;
     uint64_t frequency;
@@ -159,6 +126,18 @@ typedef struct CUDAState {
     uint8_t data_out[16];
     QEMUTimer *adb_poll_timer;
 } CUDAState;
+
+/* MOS6522 CUDA */
+typedef struct MOS6522CUDAState {
+    /*< private >*/
+    MOS6522State parent_obj;
+
+    CUDAState *cuda;
+} MOS6522CUDAState;
+
+#define TYPE_MOS6522_CUDA "mos6522-cuda"
+#define MOS6522_CUDA(obj) OBJECT_CHECK(MOS6522CUDAState, (obj), \
+                                       TYPE_MOS6522_CUDA)
 
 /* MacIO */
 #define TYPE_OLDWORLD_MACIO "macio-oldworld"
