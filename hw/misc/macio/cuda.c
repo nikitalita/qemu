@@ -66,7 +66,7 @@
 /* CUDA returns time_t's offset from Jan 1, 1904, not 1970 */
 #define RTC_OFFSET                      2082844800
 
-static void cuda_receive_packet_from_host(MOS6522CUDAState *s,
+static void cuda_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len);
 /*
 static uint64_t get_counter_value(CUDATimer *ti)
@@ -110,10 +110,10 @@ static void cuda_delay_set_sr_int(CUDAState *s)
 }
 
 /* NOTE: TIP and TREQ are negated */
-static void cuda_update(MOS6522CUDAState *s)
+static void cuda_update(CUDAState *s)
 {
-    MOS6522State *ms = MOS6522(s);
-    CUDAState *cs = s->cuda;
+    MOS6522CUDAState *mcs = s->mos6522_cuda;
+    MOS6522State *ms = MOS6522(mcs);
     int packet_received, len;
 
     packet_received = 0;
@@ -122,67 +122,65 @@ static void cuda_update(MOS6522CUDAState *s)
 
         if (ms->acr & SR_OUT) {
             /* data output */
-            if ((ms->b & (TACK | TIP)) != (cs->last_b & (TACK | TIP))) {
-                if (cs->data_out_index < sizeof(cs->data_out)) {
+            if ((ms->b & (TACK | TIP)) != (s->last_b & (TACK | TIP))) {
+                if (s->data_out_index < sizeof(s->data_out)) {
                     CUDA_DPRINTF("send: %02x\n", ms->sr);
-                    cs->data_out[cs->data_out_index++] = ms->sr;
-                    cuda_delay_set_sr_int(cs);
+                    s->data_out[s->data_out_index++] = ms->sr;
+                    cuda_delay_set_sr_int(s);
                 }
             }
         } else {
-            if (cs->data_in_index < cs->data_in_size) {
+            if (s->data_in_index < s->data_in_size) {
                 /* data input */
-                if ((ms->b & (TACK | TIP)) != (cs->last_b & (TACK | TIP))) {
-                    ms->sr = cs->data_in[cs->data_in_index++];
+                if ((ms->b & (TACK | TIP)) != (s->last_b & (TACK | TIP))) {
+                    ms->sr = s->data_in[s->data_in_index++];
                     CUDA_DPRINTF("recv: %02x\n", ms->sr);
                     /* indicate end of transfer */
-                    if (cs->data_in_index >= cs->data_in_size) {
+                    if (s->data_in_index >= s->data_in_size) {
                         ms->b = (ms->b | TREQ);
                     }
-                    cuda_delay_set_sr_int(cs);
+                    cuda_delay_set_sr_int(s);
                 }
             }
         }
     } else {
         /* no transfer requested: handle sync case */
-        if ((cs->last_b & TIP) && (ms->b & TACK) != (cs->last_b & TACK)) {
+        if ((s->last_b & TIP) && (ms->b & TACK) != (s->last_b & TACK)) {
             /* update TREQ state each time TACK change state */
             if (ms->b & TACK)
                 ms->b = (ms->b | TREQ);
             else
                 ms->b = (ms->b & ~TREQ);
-            cuda_delay_set_sr_int(cs);
+            cuda_delay_set_sr_int(s);
         } else {
-            if (!(cs->last_b & TIP)) {
+            if (!(s->last_b & TIP)) {
                 /* handle end of host to cuda transfer */
-                packet_received = (cs->data_out_index > 0);
+                packet_received = (s->data_out_index > 0);
                 /* always an IRQ at the end of transfer */
-                cuda_delay_set_sr_int(cs);
+                cuda_delay_set_sr_int(s);
             }
             /* signal if there is data to read */
-            if (cs->data_in_index < cs->data_in_size) {
+            if (s->data_in_index < s->data_in_size) {
                 ms->b = (ms->b & ~TREQ);
             }
         }
     }
 
-    cs->last_acr = ms->acr;
-    cs->last_b = ms->b;
+    s->last_acr = ms->acr;
+    s->last_b = ms->b;
 
     /* NOTE: cuda_receive_packet_from_host() can call cuda_update()
        recursively */
     if (packet_received) {
-        len = cs->data_out_index;
-        cs->data_out_index = 0;
-        cuda_receive_packet_from_host(s, cs->data_out, len);
+        len = s->data_out_index;
+        s->data_out_index = 0;
+        cuda_receive_packet_from_host(s, s->data_out, len);
     }
 }
 
-static void cuda_send_packet_to_host(MOS6522CUDAState *s,
+static void cuda_send_packet_to_host(CUDAState *s,
                                      const uint8_t *data, int len)
 {
-    CUDAState *cs = s->cuda;
-
 #ifdef DEBUG_CUDA_PACKET
     {
         int i;
@@ -192,28 +190,27 @@ static void cuda_send_packet_to_host(MOS6522CUDAState *s,
         printf("\n");
     }
 #endif
-    memcpy(cs->data_in, data, len);
-    cs->data_in_size = len;
-    cs->data_in_index = 0;
+    memcpy(s->data_in, data, len);
+    s->data_in_size = len;
+    s->data_in_index = 0;
     cuda_update(s);
-    cuda_delay_set_sr_int(cs);
+    cuda_delay_set_sr_int(s);
 }
 
 static void cuda_adb_poll(void *opaque)
 {
-    MOS6522CUDAState *s = opaque;
-    CUDAState *cs = CUDA(s);
+    CUDAState *s = opaque;
     uint8_t obuf[ADB_MAX_OUT_LEN + 2];
     int olen;
 
-    olen = adb_poll(&cs->adb_bus, obuf + 2, cs->adb_poll_mask);
+    olen = adb_poll(&s->adb_bus, obuf + 2, s->adb_poll_mask);
     if (olen > 0) {
         obuf[0] = ADB_PACKET;
         obuf[1] = 0x40; /* polled data */
         cuda_send_packet_to_host(s, obuf, olen + 2);
     }
-    timer_mod(cs->adb_poll_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-               (NANOSECONDS_PER_SECOND / (1000 / cs->autopoll_rate_ms)));
+    timer_mod(s->adb_poll_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+              (NANOSECONDS_PER_SECOND / (1000 / s->autopoll_rate_ms)));
 }
 
 /* description of commands */
@@ -387,10 +384,9 @@ static const CudaCommand handlers[] = {
     { CUDA_SET_TIME, "SET_TIME", cuda_cmd_set_time },
 };
 
-static void cuda_receive_packet(MOS6522CUDAState *s,
+static void cuda_receive_packet(CUDAState *s,
                                 const uint8_t *data, int len)
 {
-    CUDAState *cs = s->cuda;
     uint8_t obuf[16] = { CUDA_PACKET, 0, data[0] };
     int i, out_len = 0;
 
@@ -399,7 +395,7 @@ static void cuda_receive_packet(MOS6522CUDAState *s,
         if (desc->command == data[0]) {
             CUDA_DPRINTF("handling command %s\n", desc->name);
             out_len = 0;
-            if (desc->handler(cs, data + 1, len - 1, obuf + 3, &out_len)) {
+            if (desc->handler(s, data + 1, len - 1, obuf + 3, &out_len)) {
                 cuda_send_packet_to_host(s, obuf, 3 + out_len);
             } else {
                 qemu_log_mask(LOG_GUEST_ERROR,
@@ -423,11 +419,9 @@ static void cuda_receive_packet(MOS6522CUDAState *s,
     cuda_send_packet_to_host(s, obuf, 4);
 }
 
-static void cuda_receive_packet_from_host(MOS6522CUDAState *s,
+static void cuda_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len)
 {
-    CUDAState *cs = s->cuda;
-
 #ifdef DEBUG_CUDA_PACKET
     {
         int i;
@@ -442,7 +436,7 @@ static void cuda_receive_packet_from_host(MOS6522CUDAState *s,
         {
             uint8_t obuf[ADB_MAX_OUT_LEN + 3];
             int olen;
-            olen = adb_request(&cs->adb_bus, obuf + 2, data + 1, len - 1);
+            olen = adb_request(&s->adb_bus, obuf + 2, data + 1, len - 1);
             if (olen > 0) {
                 obuf[0] = ADB_PACKET;
                 obuf[1] = 0x00;
@@ -495,7 +489,7 @@ static void cuda_reset(DeviceState *dev)
     s->autopoll = 0;
 }
 
-static void cuda_realizefn(DeviceState *dev, Error **errp)
+static void cuda_realize(DeviceState *dev, Error **errp)
 {
     CUDAState *s = CUDA(dev);
     DeviceState *d;
@@ -511,13 +505,13 @@ static void cuda_realizefn(DeviceState *dev, Error **errp)
 
     s->sr_delay_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_set_sr_int, s);
     s->sr_delay_ns = 300 * SCALE_US;
-    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll,
-                                     s->mos6522_cuda);
+
+    s->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, cuda_adb_poll, s);
     s->adb_poll_mask = 0xffff;
     s->autopoll_rate_ms = 20;
 }
 
-static void cuda_initfn(Object *obj)
+static void cuda_init(Object *obj)
 {
     CUDAState *s = CUDA(obj);
 
@@ -534,7 +528,7 @@ static void cuda_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    dc->realize = cuda_realizefn;
+    dc->realize = cuda_realize;
     dc->reset = cuda_reset;
     dc->vmsd = &vmstate_cuda;
     dc->props = cuda_properties;
@@ -545,9 +539,17 @@ static const TypeInfo cuda_type_info = {
     .name = TYPE_CUDA,
     .parent = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(CUDAState),
-    .instance_init = cuda_initfn,
+    .instance_init = cuda_init,
     .class_init = cuda_class_init,
 };
+
+static void mos6522_cuda_update(MOS6522State *s)
+{
+    MOS6522CUDAState *mcs = container_of(s, MOS6522CUDAState, parent_obj);
+    CUDAState *cs = mcs->cuda;
+
+    cuda_update(cs);
+}
 
 static void mos6522_cuda_init(Object *obj)
 {
@@ -574,7 +576,7 @@ static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_CLASS(oc);
 
     dc->realize = mos6522_cuda_realize;
-    mdc->portB_write = cuda_update;
+    mdc->portB_write = mos6522_cuda_update;
 }
 
 static const TypeInfo mos6522_cuda_type_info = {
