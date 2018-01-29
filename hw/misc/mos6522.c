@@ -188,13 +188,13 @@ static void mos6522_portB_write(MOS6522State *s)
     qemu_log_mask(LOG_UNIMP, "portB_write unimplemented");
 }
 
-static uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
+uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
 {
     MOS6522State *s = opaque;
     uint32_t val;
 
     addr = (addr >> 9) & 0xf;
-    switch(addr) {
+    switch (addr) {
     case VIA_REG_B:
         val = s->b;
         break;
@@ -263,7 +263,7 @@ static uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
-static void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
+void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
     MOS6522State *s = opaque;
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
@@ -434,13 +434,13 @@ static void mos6522_realize(DeviceState *dev, Error **errp)
 
 static void mos6522_init(Object *obj)
 {
-    SysBusDevice *d = SYS_BUS_DEVICE(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
     MOS6522State *s = MOS6522(obj);
     int i;
 
-    memory_region_init_io(&s->mem, obj, &mos6522_ops, s, "mos6522", 0x2000);
-    sysbus_init_mmio(d, &s->mem);
-    sysbus_init_irq(d, &s->irq);
+    memory_region_init_io(&s->mem, obj, &mos6522_ops, s, "mos6522", 0x10);
+    sysbus_init_mmio(sbd, &s->mem);
+    sysbus_init_irq(sbd, &s->irq);
 
     for (i = 0; i < ARRAY_SIZE(s->timers); i++) {
         s->timers[i].index = i;

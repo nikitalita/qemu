@@ -457,6 +457,33 @@ static void cuda_receive_packet_from_host(CUDAState *s,
     }
 }
 
+static uint64_t mos6522_cuda_read(void *opaque, hwaddr addr, unsigned size)
+{
+    CUDAState *s = opaque;
+    MOS6522CUDAState *mcs = s->mos6522_cuda;
+    MOS6522State *ms = MOS6522(mcs);
+
+    addr = (addr >> 9) & 0xf;
+    return mos6522_read(ms, addr, size);
+}
+
+static void mos6522_cuda_write(void *opaque, hwaddr addr, uint64_t val,
+                               unsigned size)
+{
+    CUDAState *s = opaque;
+    MOS6522CUDAState *mcs = s->mos6522_cuda;
+    MOS6522State *ms = MOS6522(mcs);
+
+    addr = (addr >> 9) & 0xf;
+    mos6522_write(ms, addr, val, size);
+}
+
+static const MemoryRegionOps mos6522_cuda_ops = {
+    .read = mos6522_cuda_read,
+    .write = mos6522_cuda_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+};
+
 static const VMStateDescription vmstate_cuda = {
     .name = "cuda",
     .version_id = 4,
@@ -492,6 +519,8 @@ static void cuda_reset(DeviceState *dev)
 static void cuda_realize(DeviceState *dev, Error **errp)
 {
     CUDAState *s = CUDA(dev);
+    SysBusDevice *sbd;
+    MOS6522State *ms;
     DeviceState *d;
     struct tm tm;
 
@@ -499,6 +528,10 @@ static void cuda_realize(DeviceState *dev, Error **errp)
     object_property_set_link(OBJECT(d), OBJECT(dev), "cuda", errp);
     qdev_init_nofail(d);
     s->mos6522_cuda = MOS6522_CUDA(d);
+    ms = MOS6522(d);
+
+    sbd = SYS_BUS_DEVICE(s);
+    sysbus_pass_irq(sbd, SYS_BUS_DEVICE(ms));
 
     qemu_get_timedate(&tm, 0);
     s->tick_offset = (uint32_t)mktimegm(&tm) + RTC_OFFSET;
@@ -514,6 +547,10 @@ static void cuda_realize(DeviceState *dev, Error **errp)
 static void cuda_init(Object *obj)
 {
     CUDAState *s = CUDA(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
+
+    memory_region_init_io(&s->mem, obj, &mos6522_cuda_ops, s, "cuda", 0x2000);
+    sysbus_init_mmio(sbd, &s->mem);
 
     qbus_create_inplace(&s->adb_bus, sizeof(s->adb_bus), TYPE_ADB_BUS,
                         DEVICE(obj), "adb.0");
@@ -543,7 +580,7 @@ static const TypeInfo cuda_type_info = {
     .class_init = cuda_class_init,
 };
 
-static void mos6522_cuda_update(MOS6522State *s)
+static void mos6522_cuda_portB_write(MOS6522State *s)
 {
     MOS6522CUDAState *mcs = container_of(s, MOS6522CUDAState, parent_obj);
     CUDAState *cs = mcs->cuda;
@@ -554,7 +591,7 @@ static void mos6522_cuda_update(MOS6522State *s)
 static void mos6522_cuda_init(Object *obj)
 {
     MOS6522CUDAState *s = MOS6522_CUDA(obj);
-    
+
     object_property_add_link(obj, "cuda", TYPE_CUDA,
                              (Object **) &s->cuda,
                              qdev_prop_allow_set_link_before_realize,
@@ -576,7 +613,7 @@ static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_CLASS(oc);
 
     dc->realize = mos6522_cuda_realize;
-    mdc->portB_write = mos6522_cuda_update;
+    mdc->portB_write = mos6522_cuda_portB_write;
 }
 
 static const TypeInfo mos6522_cuda_type_info = {

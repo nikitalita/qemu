@@ -140,4 +140,7 @@ typedef struct MOS6522DeviceClass
 #define MOS6522_DEVICE_GET_CLASS(obj) \
     OBJECT_GET_CLASS(MOS6522DeviceClass, (obj), TYPE_MOS6522)
 
+uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size);
+void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size);
+    
 #endif /* MOS6522_H */
