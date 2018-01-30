@@ -113,6 +113,7 @@ static void cuda_delay_set_sr_int(CUDAState *s)
         return;
     }
 
+    fprintf(stderr, "IT'S A DELAY!!!!\n");
     CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
 
     expire = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + s->sr_delay_ns;
