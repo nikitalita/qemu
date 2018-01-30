@@ -261,7 +261,7 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
     if (addr != VIA_REG_IFR || val != 0) {
-        CUDA_DPRINTF("read: reg=0x%x val=%02x\n", (int)addr, val);
+        CUDA_DPRINTF("read: reg=0x%"PRIx64 " val=%"PRIx32"\n", addr, val);
     }
 
     return val;
@@ -272,7 +272,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     MOS6522State *s = opaque;
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
 
-    CUDA_DPRINTF("write: reg=0x%x val=%02x\n", (int)addr, val);
+    CUDA_DPRINTF("write: reg=0x%"PRIx64 " val=%"PRIx64"\n", addr, val);
 
     switch (addr) {
     case VIA_REG_B:
