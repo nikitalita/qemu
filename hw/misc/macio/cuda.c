@@ -68,17 +68,6 @@
 
 static void cuda_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len);
-/*
-static uint64_t get_counter_value(CUDATimer *ti)
-{
-    uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                                ti->frequency, NANOSECONDS_PER_SECOND) -
-                           ti->load_time;
-
-    // Reverse of the tb calculation algorithm that Mac OS X uses on bootup
-    return (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
-}
-*/
 
 static uint64_t cuda_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
 {
@@ -86,7 +75,7 @@ static uint64_t cuda_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
                                 ti->frequency, NANOSECONDS_PER_SECOND) -
                            ti->load_time;
 
-    // Reverse of the tb calculation algorithm that Mac OS X uses on bootup
+    /* Reverse of the tb calculation algorithm that Mac OS X uses on bootup */
     return (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
 }
 
@@ -113,7 +102,6 @@ static void cuda_delay_set_sr_int(CUDAState *s)
         return;
     }
 
-    fprintf(stderr, "IT'S A DELAY!!!!\n");
     CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
 
     expire = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + s->sr_delay_ns;
@@ -614,6 +602,7 @@ static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
     MOS6522CUDAState *mcs = MOS6522_CUDA(dev);
     MOS6522State *ms = MOS6522(dev);
 
+    ms->frequency = mcs->cuda->frequency;
     ms->timers[0].frequency = mcs->cuda->frequency;
     ms->timers[1].frequency = (SCALE_US * 6000) / 4700;
 }
