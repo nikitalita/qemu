@@ -80,6 +80,16 @@ static uint64_t get_counter_value(CUDATimer *ti)
 }
 */
 
+static uint64_t cuda_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
+{
+    uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
+                                ti->frequency, NANOSECONDS_PER_SECOND) -
+                           ti->load_time;
+
+    // Reverse of the tb calculation algorithm that Mac OS X uses on bootup
+    return (tb_diff * 0xBF401675E5DULL) / (ti->frequency << 24);
+}
+
 static void cuda_set_sr_int(void *opaque)
 {
     CUDAState *s = opaque;
@@ -614,6 +624,8 @@ static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
 
     dc->realize = mos6522_cuda_realize;
     mdc->portB_write = mos6522_cuda_portB_write;
+    mdc->get_timer1_counter_value = cuda_get_counter_value;
+    mdc->get_timer2_counter_value = cuda_get_counter_value;
 }
 
 static const TypeInfo mos6522_cuda_type_info = {

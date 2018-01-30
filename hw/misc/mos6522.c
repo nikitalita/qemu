@@ -193,7 +193,6 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
     MOS6522State *s = opaque;
     uint32_t val;
 
-    addr = (addr >> 9) & 0xf;
     switch (addr) {
     case VIA_REG_B:
         val = s->b;
@@ -268,7 +267,6 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     MOS6522State *s = opaque;
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
 
-    addr = (addr >> 9) & 0xf;
     CUDA_DPRINTF("write: reg=0x%x val=%02x\n", (int)addr, val);
 
     switch(addr) {
@@ -477,6 +475,7 @@ static const TypeInfo mos6522_type_info = {
     .instance_size = sizeof(MOS6522State),
     .instance_init = mos6522_init,
     .abstract = true,
+    .class_size = sizeof(MOS6522DeviceClass),
     .class_init = mos6522_class_init,
 };
 
