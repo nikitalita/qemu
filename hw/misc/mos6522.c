@@ -59,23 +59,26 @@ static void mos6522_update_irq(MOS6522State *s)
     }
 }
 
-static uint64_t mos6522_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
+static uint64_t get_counter_value(MOS6522State *s, MOS6522Timer *ti)
 {
-    uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                                ti->frequency, NANOSECONDS_PER_SECOND) -
-                           ti->load_time;
-    return tb_diff;
+    MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);    
+    
+    if (ti->index == 0) {
+        return mdc->get_timer1_counter_value(s, ti);
+    } else {
+        return mdc->get_timer2_counter_value(s, ti);
+    }
 }
 
 static unsigned int get_counter(MOS6522State *s, MOS6522Timer *ti)
 {
-    MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
     int64_t d;
     unsigned int counter;
 
+    d = get_counter_value(s, ti);
+
     if (ti->index == 0) {
         /* the timer goes down from latch to -1 (period of latch + 2) */
-        d = mdc->get_timer1_counter_value(s, ti);
         if (d <= (ti->counter_value + 1)) {
             counter = (ti->counter_value - d) & 0xffff;
         } else {
@@ -83,7 +86,6 @@ static unsigned int get_counter(MOS6522State *s, MOS6522Timer *ti)
             counter = (ti->latch - counter) & 0xffff;
         }
     } else {
-        d = mdc->get_timer2_counter_value(s, ti);
         counter = (ti->counter_value - d) & 0xffff;
     }
     return counter;
@@ -101,16 +103,11 @@ static void set_counter(MOS6522State *s, MOS6522Timer *ti, unsigned int val)
 static int64_t get_next_irq_time(MOS6522State *s, MOS6522Timer *ti,
                                  int64_t current_time)
 {
-    MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
     int64_t d, next_time;
     unsigned int counter;
 
     /* current counter value */
-    if (ti->index == 0) {
-        d = mdc->get_timer1_counter_value(s, ti);
-    } else {
-        d = mdc->get_timer2_counter_value(s, ti);        
-    }
+    d = get_counter_value(s, ti);
 
     /* the timer goes down from latch to -1 (period of latch + 2) */
     if (d <= (ti->counter_value + 1)) {
@@ -176,6 +173,14 @@ static void mos6522_set_sr_int(MOS6522State *s)
     CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
     s->ifr |= SR_INT;
     mos6522_update_irq(s);
+}
+
+static uint64_t mos6522_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
+{
+    uint64_t tb_diff = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
+                                ti->frequency, NANOSECONDS_PER_SECOND) -
+                           ti->load_time;
+    return tb_diff;
 }
 
 static void mos6522_portA_write(MOS6522State *s)
@@ -269,7 +274,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 
     CUDA_DPRINTF("write: reg=0x%x val=%02x\n", (int)addr, val);
 
-    switch(addr) {
+    switch (addr) {
     case VIA_REG_B:
         s->b = val;
         mdc->portB_write(s);
