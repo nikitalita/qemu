@@ -31,21 +31,9 @@
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "qemu/log.h"
+#include "trace.h"
 
 /* XXX: implement all timer modes */
-
-/* debug CUDA */
-//#define DEBUG_CUDA
-
-/* debug CUDA packets */
-//#define DEBUG_CUDA_PACKET
-
-#ifdef DEBUG_CUDA
-#define CUDA_DPRINTF(fmt, ...)                                  \
-    do { printf("CUDA: " fmt , ## __VA_ARGS__); } while (0)
-#else
-#define CUDA_DPRINTF(fmt, ...)
-#endif
 
 static void mos6522_timer_update(MOS6522State *s, MOS6522Timer *ti,
                                  int64_t current_time);
@@ -93,7 +81,7 @@ static unsigned int get_counter(MOS6522State *s, MOS6522Timer *ti)
 
 static void set_counter(MOS6522State *s, MOS6522Timer *ti, unsigned int val)
 {
-    CUDA_DPRINTF("T%d.counter=%d\n", 1 + ti->index, val);
+    trace_mos6522_set_counter(1 + ti->index, val);
     ti->load_time = muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
                              s->frequency, NANOSECONDS_PER_SECOND);
     ti->counter_value = val;
@@ -125,8 +113,7 @@ static int64_t get_next_irq_time(MOS6522State *s, MOS6522Timer *ti,
     } else {
         next_time = d + counter;
     }
-    CUDA_DPRINTF("latch=%d counter=%" PRId64 " delta_next=%" PRId64 "\n",
-                 ti->latch, d, next_time - d);
+    trace_mos6522_get_next_irq_time(ti->latch, d, next_time - d);
     next_time = muldiv64(next_time, NANOSECONDS_PER_SECOND, ti->frequency) +
                          ti->load_time;
     if (next_time <= current_time)
@@ -170,7 +157,7 @@ static void mos6522_timer2(void *opaque)
 
 static void mos6522_set_sr_int(MOS6522State *s)
 {
-    CUDA_DPRINTF("CUDA: %s:%d\n", __func__, __LINE__);
+    trace_mos6522_set_sr_int();
     s->ifr |= SR_INT;
     mos6522_update_irq(s);
 }
@@ -260,8 +247,9 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
         val = s->anh;
         break;
     }
+
     if (addr != VIA_REG_IFR || val != 0) {
-        CUDA_DPRINTF("read: reg=0x%"PRIx64 " val=%"PRIx32"\n", addr, val);
+        trace_mos6522_read(addr, val);
     }
 
     return val;
@@ -272,7 +260,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     MOS6522State *s = opaque;
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(s);
 
-    CUDA_DPRINTF("write: reg=0x%"PRIx64 " val=%"PRIx64"\n", addr, val);
+    trace_mos6522_write(addr, val);
 
     switch (addr) {
     case VIA_REG_B:
