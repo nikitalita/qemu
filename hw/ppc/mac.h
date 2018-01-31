@@ -77,22 +77,6 @@
 #define TYPE_CUDA "cuda"
 #define CUDA(obj) OBJECT_CHECK(CUDAState, (obj), TYPE_CUDA)
 
-/**
- * CUDAState:
- * @b: B-side data
- * @a: A-side data
- * @dirb: B-side direction (1=output)
- * @dira: A-side direction (1=output)
- * @sr: Shift register
- * @acr: Auxiliary control register
- * @pcr: Peripheral control register
- * @ifr: Interrupt flag register
- * @ier: Interrupt enable register
- * @anh: A-side data, no handshake
- * @last_b: last value of B register
- * @last_acr: last value of ACR register
- */
-
 typedef struct MOS6522CUDAState MOS6522CUDAState;
 
 typedef struct CUDAState {
