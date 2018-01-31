@@ -313,8 +313,6 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         s->acr = val;
         mos6522_timer_update(s, &s->timers[0],
                              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
-        mos6522_timer_update(s, &s->timers[1],
-                             qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case VIA_REG_PCR:
         s->pcr = val;
