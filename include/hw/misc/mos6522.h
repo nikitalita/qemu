@@ -103,7 +103,7 @@ typedef struct MOS6522State {
     /*< public >*/
 
     MemoryRegion mem;
-    /* cuda registers */
+    /* VIA registers */
     uint8_t b;
     uint8_t a;
     uint8_t dirb;
@@ -118,6 +118,9 @@ typedef struct MOS6522State {
     MOS6522Timer timers[2];
     uint64_t frequency;
 
+    void *portB_opaque;
+    void *portA_opaque;
+
     qemu_irq irq;
 } MOS6522State;
 
@@ -130,8 +133,8 @@ typedef struct MOS6522DeviceClass
 
     DeviceRealize parent_realize;
     void (*set_sr_int)(MOS6522State *dev);
-    void (*portB_write)(MOS6522State *dev);
-    void (*portA_write)(MOS6522State *dev);
+    void (*portB_write)(void *opaque);
+    void (*portA_write)(void *opaque);
     uint64_t (*get_timer1_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
     uint64_t (*get_timer2_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
 } MOS6522DeviceClass;

@@ -131,8 +131,6 @@ typedef struct CUDAState {
 typedef struct MOS6522CUDAState {
     /*< private >*/
     MOS6522State parent_obj;
-
-    CUDAState *cuda;
 } MOS6522CUDAState;
 
 #define TYPE_MOS6522_CUDA "mos6522-cuda"

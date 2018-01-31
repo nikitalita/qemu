@@ -525,7 +525,8 @@ static void cuda_realize(DeviceState *dev, Error **errp)
 
     d = qdev_create(NULL, TYPE_MOS6522_CUDA);
     qdev_prop_set_uint64(d, "frequency", s->frequency);
-    object_property_set_link(OBJECT(d), OBJECT(dev), "cuda", errp);
+    qdev_prop_set_ptr(d, "portB-opaque", s);
+    qdev_prop_set_ptr(d, "portA-opaque", s);
     qdev_init_nofail(d);
     s->mos6522_cuda = MOS6522_CUDA(d);
     ms = MOS6522(d);
@@ -581,22 +582,11 @@ static const TypeInfo cuda_type_info = {
     .class_init = cuda_class_init,
 };
 
-static void mos6522_cuda_portB_write(MOS6522State *s)
+static void mos6522_cuda_portB_write(void *opaque)
 {
-    MOS6522CUDAState *mcs = container_of(s, MOS6522CUDAState, parent_obj);
-    CUDAState *cs = mcs->cuda;
+    CUDAState *cs = opaque;
 
     cuda_update(cs);
-}
-
-static void mos6522_cuda_init(Object *obj)
-{
-    MOS6522CUDAState *s = MOS6522_CUDA(obj);
-
-    object_property_add_link(obj, "cuda", TYPE_CUDA,
-                             (Object **) &s->cuda,
-                             qdev_prop_allow_set_link_before_realize,
-                             0, NULL);
 }
 
 static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
@@ -615,18 +605,12 @@ static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
     ms->timers[1].frequency = (SCALE_US * 6000) / 4700;
 }
 
-static Property mos6522_cuda_properties[] = {
-    DEFINE_PROP_UINT64("frequency", MOS6522CUDAState, parent_obj.frequency, 0),
-    DEFINE_PROP_END_OF_LIST()
-};
-
 static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_CLASS(oc);
 
     dc->realize = mos6522_cuda_realize;
-    dc->props = mos6522_cuda_properties;
     mdc->portB_write = mos6522_cuda_portB_write;
     mdc->get_timer1_counter_value = cuda_get_counter_value;
     mdc->get_timer2_counter_value = cuda_get_counter_value;
@@ -636,7 +620,6 @@ static const TypeInfo mos6522_cuda_type_info = {
     .name = TYPE_MOS6522_CUDA,
     .parent = TYPE_MOS6522,
     .instance_size = sizeof(MOS6522CUDAState),
-    .instance_init = mos6522_cuda_init,
     .class_init = mos6522_cuda_class_init,
 };
 

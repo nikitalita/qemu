@@ -183,12 +183,12 @@ static uint64_t mos6522_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
     return tb_diff;
 }
 
-static void mos6522_portA_write(MOS6522State *s)
+static void mos6522_portA_write(void *opaque)
 {
     qemu_log_mask(LOG_UNIMP, "portA_write unimplemented");
 }
 
-static void mos6522_portB_write(MOS6522State *s)
+static void mos6522_portB_write(void *opaque)
 {
     qemu_log_mask(LOG_UNIMP, "portB_write unimplemented");
 }
@@ -277,11 +277,11 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     switch (addr) {
     case VIA_REG_B:
         s->b = val;
-        mdc->portB_write(s);
+        mdc->portB_write(s->portB_opaque);
         break;
     case VIA_REG_A:
         s->a = val;
-        mdc->portA_write(s);
+        mdc->portA_write(s->portA_opaque);
         break;
     case VIA_REG_DIRB:
         s->dirb = val;
@@ -455,6 +455,8 @@ static void mos6522_init(Object *obj)
 
 static Property mos6522_properties[] = {
     DEFINE_PROP_UINT64("frequency", MOS6522State, frequency, 0),
+    DEFINE_PROP_PTR("portB-opaque", MOS6522State, portB_opaque),
+    DEFINE_PROP_PTR("portA-opaque", MOS6522State, portA_opaque),
     DEFINE_PROP_END_OF_LIST()
 };
 
