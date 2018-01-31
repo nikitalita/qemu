@@ -128,6 +128,7 @@ typedef struct MOS6522DeviceClass
 {
     DeviceClass parent_class;
 
+    DeviceRealize parent_realize;
     void (*set_sr_int)(MOS6522State *dev);
     void (*portB_write)(MOS6522State *dev);
     void (*portA_write)(MOS6522State *dev);

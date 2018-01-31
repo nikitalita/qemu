@@ -467,6 +467,7 @@ static void mos6522_class_init(ObjectClass *oc, void *data)
     dc->reset = mos6522_reset;
     dc->vmsd = &vmstate_mos6522;
     dc->props = mos6522_properties;
+    mdc->parent_realize = dc->realize;
     mdc->set_sr_int = mos6522_set_sr_int;
     mdc->portB_write = mos6522_portB_write;
     mdc->portA_write = mos6522_portA_write;

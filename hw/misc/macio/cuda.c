@@ -524,11 +524,13 @@ static void cuda_realize(DeviceState *dev, Error **errp)
     struct tm tm;
 
     d = qdev_create(NULL, TYPE_MOS6522_CUDA);
+    qdev_prop_set_uint64(d, "frequency", s->frequency);
     object_property_set_link(OBJECT(d), OBJECT(dev), "cuda", errp);
     qdev_init_nofail(d);
     s->mos6522_cuda = MOS6522_CUDA(d);
     ms = MOS6522(d);
 
+    /* Pass IRQ from 6522 */
     sbd = SYS_BUS_DEVICE(s);
     sysbus_pass_irq(sbd, SYS_BUS_DEVICE(ms));
 
@@ -599,13 +601,24 @@ static void mos6522_cuda_init(Object *obj)
 
 static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
 {
-    MOS6522CUDAState *mcs = MOS6522_CUDA(dev);
     MOS6522State *ms = MOS6522(dev);
+    MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(ms);
 
-    ms->frequency = mcs->cuda->frequency;
-    ms->timers[0].frequency = mcs->cuda->frequency;
+    mdc->parent_realize(dev, errp);
+
+    /* MacOS uses timer 1 for calibration on startup, so we use
+     * the timebase frequency and cuda_get_counter_value() to
+     * steer MacOS to calculate usable values for both TCG and
+     * KVM (see commit b981289c49 "PPC: Cuda: Use cuda timer to
+     * expose tbfreq to guest" for more information) */
+    ms->timers[0].frequency = ms->frequency;
     ms->timers[1].frequency = (SCALE_US * 6000) / 4700;
 }
+
+static Property mos6522_cuda_properties[] = {
+    DEFINE_PROP_UINT64("frequency", MOS6522CUDAState, parent_obj.frequency, 0),
+    DEFINE_PROP_END_OF_LIST()
+};
 
 static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
 {
@@ -613,6 +626,7 @@ static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_CLASS(oc);
 
     dc->realize = mos6522_cuda_realize;
+    dc->props = mos6522_cuda_properties;
     mdc->portB_write = mos6522_cuda_portB_write;
     mdc->get_timer1_counter_value = cuda_get_counter_value;
     mdc->get_timer2_counter_value = cuda_get_counter_value;
