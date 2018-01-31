@@ -32,10 +32,8 @@
 #include "qemu/cutils.h"
 #include "qemu/log.h"
 
-/* XXX: implement all timer modes */
-
-/* debug CUDA */
-//#define DEBUG_CUDA
+/* debug CUDA packets */
+//#define DEBUG_CUDA_PACKET
 
 /* debug CUDA packets */
 //#define DEBUG_CUDA_PACKET
@@ -48,18 +46,18 @@
 #endif
 
 /* Bits in B data register: all active low */
-#define TREQ		0x08		/* Transfer request (input) */
-#define TACK		0x10		/* Transfer acknowledge (output) */
-#define TIP		0x20		/* Transfer in progress (output) */
+#define TREQ            0x08    /* Transfer request (input) */
+#define TACK            0x10    /* Transfer acknowledge (output) */
+#define TIP             0x20	/* Transfer in progress (output) */
 
 /* commands (1st byte) */
-#define ADB_PACKET	0
-#define CUDA_PACKET	1
-#define ERROR_PACKET	2
-#define TIMER_PACKET	3
-#define POWER_PACKET	4
-#define MACIIC_PACKET	5
-#define PMU_PACKET	6
+#define ADB_PACKET      0
+#define CUDA_PACKET     1
+#define ERROR_PACKET    2
+#define TIMER_PACKET    3
+#define POWER_PACKET    4
+#define MACIIC_PACKET   5
+#define PMU_PACKET      6
 
 #define CUDA_TIMER_FREQ (4700000 / 6)
 
