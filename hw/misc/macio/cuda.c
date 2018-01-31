@@ -525,8 +525,7 @@ static void cuda_realize(DeviceState *dev, Error **errp)
 
     d = qdev_create(NULL, TYPE_MOS6522_CUDA);
     qdev_prop_set_uint64(d, "frequency", s->frequency);
-    qdev_prop_set_ptr(d, "portB-opaque", s);
-    qdev_prop_set_ptr(d, "portA-opaque", s);
+    object_property_set_link(OBJECT(d), OBJECT(s), "portB", errp);
     qdev_init_nofail(d);
     s->mos6522_cuda = MOS6522_CUDA(d);
     ms = MOS6522(d);
@@ -582,9 +581,9 @@ static const TypeInfo cuda_type_info = {
     .class_init = cuda_class_init,
 };
 
-static void mos6522_cuda_portB_write(void *opaque)
+static void mos6522_cuda_portB_write(Object *obj)
 {
-    CUDAState *cs = opaque;
+    CUDAState *cs = CUDA(obj);
 
     cuda_update(cs);
 }

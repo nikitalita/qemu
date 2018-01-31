@@ -48,7 +48,7 @@
 #endif
 
 static void mos6522_timer_update(MOS6522State *s, MOS6522Timer *ti,
-                              int64_t current_time);
+                                 int64_t current_time);
 
 static void mos6522_update_irq(MOS6522State *s)
 {
@@ -135,7 +135,7 @@ static int64_t get_next_irq_time(MOS6522State *s, MOS6522Timer *ti,
 }
 
 static void mos6522_timer_update(MOS6522State *s, MOS6522Timer *ti,
-                              int64_t current_time)
+                                 int64_t current_time)
 {
     if (!ti->timer) {
         return;
@@ -183,12 +183,12 @@ static uint64_t mos6522_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
     return tb_diff;
 }
 
-static void mos6522_portA_write(void *opaque)
+static void mos6522_portA_write(Object *obj)
 {
     qemu_log_mask(LOG_UNIMP, "portA_write unimplemented");
 }
 
-static void mos6522_portB_write(void *opaque)
+static void mos6522_portB_write(Object *obj)
 {
     qemu_log_mask(LOG_UNIMP, "portB_write unimplemented");
 }
@@ -277,11 +277,11 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     switch (addr) {
     case VIA_REG_B:
         s->b = val;
-        mdc->portB_write(s->portB_opaque);
+        mdc->portB_write(s->portB);
         break;
     case VIA_REG_A:
         s->a = val;
-        mdc->portA_write(s->portA_opaque);
+        mdc->portA_write(s->portA);
         break;
     case VIA_REG_DIRB:
         s->dirb = val;
@@ -324,9 +324,9 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     case VIA_REG_ACR:
         s->acr = val;
         mos6522_timer_update(s, &s->timers[0],
-                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+                             qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         mos6522_timer_update(s, &s->timers[1],
-                          qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+                             qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         break;
     case VIA_REG_PCR:
         s->pcr = val;
@@ -451,12 +451,21 @@ static void mos6522_init(Object *obj)
 
     s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer1, s);
     s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer2, s);
+
+    /* Objects passed to the portB/portA callback functions */
+    object_property_add_link(obj, "portB", TYPE_OBJECT,
+                             (Object **) &s->portB,
+                             qdev_prop_allow_set_link_before_realize,
+                             0, NULL);
+    
+    object_property_add_link(obj, "portA", TYPE_OBJECT,
+                             (Object **) &s->portA,
+                             qdev_prop_allow_set_link_before_realize,
+                             0, NULL);
 }
 
 static Property mos6522_properties[] = {
     DEFINE_PROP_UINT64("frequency", MOS6522State, frequency, 0),
-    DEFINE_PROP_PTR("portB-opaque", MOS6522State, portB_opaque),
-    DEFINE_PROP_PTR("portA-opaque", MOS6522State, portA_opaque),
     DEFINE_PROP_END_OF_LIST()
 };
 
