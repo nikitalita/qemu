@@ -276,11 +276,11 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 
     switch (addr) {
     case VIA_REG_B:
-        s->b = val;
+        s->b = (s->b & ~s->dirb) | (val & s->dirb);
         mdc->portB_write(s->portB);
         break;
     case VIA_REG_A:
-        s->a = val;
+        s->a = (s->a & ~s->dira) | (val & s->dira);
         mdc->portA_write(s->portA);
         break;
     case VIA_REG_DIRB:
