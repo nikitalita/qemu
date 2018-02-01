@@ -118,10 +118,6 @@ typedef struct MOS6522State {
     MOS6522Timer timers[2];
     uint64_t frequency;
 
-    /* Objects passed to the portB/portA callback functions */
-    Object *portB;
-    Object *portA;
-
     qemu_irq irq;
 } MOS6522State;
 
@@ -134,8 +130,8 @@ typedef struct MOS6522DeviceClass
 
     DeviceRealize parent_realize;
     void (*set_sr_int)(MOS6522State *dev);
-    void (*portB_write)(Object *obj);
-    void (*portA_write)(Object *obj);
+    void (*portB_write)(MOS6522State *dev);
+    void (*portA_write)(MOS6522State *dev);
     uint64_t (*get_timer1_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
     uint64_t (*get_timer2_counter_value)(MOS6522State *dev, MOS6522Timer *ti);
 } MOS6522DeviceClass;

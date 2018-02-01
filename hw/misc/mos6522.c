@@ -170,12 +170,12 @@ static uint64_t mos6522_get_counter_value(MOS6522State *s, MOS6522Timer *ti)
     return tb_diff;
 }
 
-static void mos6522_portA_write(Object *obj)
+static void mos6522_portA_write(MOS6522State *s)
 {
     qemu_log_mask(LOG_UNIMP, "portA_write unimplemented");
 }
 
-static void mos6522_portB_write(Object *obj)
+static void mos6522_portB_write(MOS6522State *s)
 {
     qemu_log_mask(LOG_UNIMP, "portB_write unimplemented");
 }
@@ -265,11 +265,11 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     switch (addr) {
     case VIA_REG_B:
         s->b = (s->b & ~s->dirb) | (val & s->dirb);
-        mdc->portB_write(s->portB);
+        mdc->portB_write(s);
         break;
     case VIA_REG_A:
         s->a = (s->a & ~s->dira) | (val & s->dira);
-        mdc->portA_write(s->portA);
+        mdc->portA_write(s);
         break;
     case VIA_REG_DIRB:
         s->dirb = val;
@@ -437,17 +437,6 @@ static void mos6522_init(Object *obj)
 
     s->timers[0].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer1, s);
     s->timers[1].timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, mos6522_timer2, s);
-
-    /* Objects passed to the portB/portA callback functions */
-    object_property_add_link(obj, "portB", TYPE_OBJECT,
-                             (Object **) &s->portB,
-                             qdev_prop_allow_set_link_before_realize,
-                             0, NULL);
-    
-    object_property_add_link(obj, "portA", TYPE_OBJECT,
-                             (Object **) &s->portA,
-                             qdev_prop_allow_set_link_before_realize,
-                             0, NULL);
 }
 
 static Property mos6522_properties[] = {

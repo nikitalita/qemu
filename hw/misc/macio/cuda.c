@@ -523,12 +523,12 @@ static void cuda_realize(DeviceState *dev, Error **errp)
 
     d = qdev_create(NULL, TYPE_MOS6522_CUDA);
     qdev_prop_set_uint64(d, "frequency", s->frequency);
-    object_property_set_link(OBJECT(d), OBJECT(s), "portB", errp);
+    object_property_set_link(OBJECT(d), OBJECT(s), "cuda", errp);
     qdev_init_nofail(d);
     s->mos6522_cuda = MOS6522_CUDA(d);
-    ms = MOS6522(d);
 
     /* Pass IRQ from 6522 */
+    ms = MOS6522(d);
     sbd = SYS_BUS_DEVICE(s);
     sysbus_pass_irq(sbd, SYS_BUS_DEVICE(ms));
 
@@ -579,11 +579,11 @@ static const TypeInfo cuda_type_info = {
     .class_init = cuda_class_init,
 };
 
-static void mos6522_cuda_portB_write(Object *obj)
+static void mos6522_cuda_portB_write(MOS6522State *s)
 {
-    CUDAState *cs = CUDA(obj);
-
-    cuda_update(cs);
+    MOS6522CUDAState *mcs = container_of(s, MOS6522CUDAState, parent_obj);
+    
+    cuda_update(mcs->cuda);
 }
 
 static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
@@ -602,6 +602,16 @@ static void mos6522_cuda_realize(DeviceState *dev, Error **errp)
     ms->timers[1].frequency = (SCALE_US * 6000) / 4700;
 }
 
+static void mos6522_cuda_init(Object *obj)
+{
+    MOS6522CUDAState *s = MOS6522_CUDA(obj);
+    
+    object_property_add_link(obj, "cuda", TYPE_OBJECT,
+                             (Object **) &s->cuda,
+                             qdev_prop_allow_set_link_before_realize,
+                             0, NULL);
+}
+
 static void mos6522_cuda_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -617,6 +627,7 @@ static const TypeInfo mos6522_cuda_type_info = {
     .name = TYPE_MOS6522_CUDA,
     .parent = TYPE_MOS6522,
     .instance_size = sizeof(MOS6522CUDAState),
+    .instance_init = mos6522_cuda_init,
     .class_init = mos6522_cuda_class_init,
 };
 
