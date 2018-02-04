@@ -159,7 +159,7 @@ DeviceState *heathrow_pic_init(int nb_cpus, qemu_irq **irqs,
 
 /* Grackle PCI */
 #define TYPE_GRACKLE_PCI_HOST_BRIDGE "grackle-pcihost"
-PCIBus *pci_grackle_init(uint32_t base, qemu_irq *pic,
+PCIBus *pci_grackle_init(uint32_t base, DeviceState *pic,
                          MemoryRegion *address_space_mem,
                          MemoryRegion *address_space_io);
 

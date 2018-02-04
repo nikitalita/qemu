@@ -27,6 +27,7 @@
 #include "hw/pci/pci_host.h"
 #include "hw/ppc/mac.h"
 #include "hw/pci/pci.h"
+#include "hw/intc/heathrow_pic.h"
 #include "trace.h"
 
 #define GRACKLE_PCI_HOST_BRIDGE(obj) \
@@ -37,7 +38,7 @@ typedef struct GrackleState {
 
     MemoryRegion pci_mmio;
     MemoryRegion pci_hole;
-    void *pic;
+    HeathrowState *pic;
 } GrackleState;
 
 /* Don't know if this matches real hardware, but it agrees with OHW.  */
@@ -48,13 +49,13 @@ static int pci_grackle_map_irq(PCIDevice *pci_dev, int irq_num)
 
 static void pci_grackle_set_irq(void *opaque, int irq_num, int level)
 {
-    qemu_irq *pic = opaque;
+    HeathrowState *s = opaque;
 
     trace_grackle_set_irq(irq_num, level);
-    qemu_set_irq(pic[irq_num + 0x15], level);
+    qemu_set_irq(s->irqs[irq_num + 0x15], level);
 }
 
-PCIBus *pci_grackle_init(uint32_t base, qemu_irq *pic,
+PCIBus *pci_grackle_init(uint32_t base, DeviceState *pic,
                          MemoryRegion *address_space_mem,
                          MemoryRegion *address_space_io)
 {
@@ -64,7 +65,7 @@ PCIBus *pci_grackle_init(uint32_t base, qemu_irq *pic,
     GrackleState *d;
 
     dev = qdev_create(NULL, TYPE_GRACKLE_PCI_HOST_BRIDGE);
-    qdev_prop_set_ptr(dev, "pic", pic);
+    object_property_set_link(OBJECT(dev), OBJECT(pic), "pic", &error_abort);
     qdev_init_nofail(dev);
 
     s = SYS_BUS_DEVICE(dev);
@@ -113,6 +114,11 @@ static void grackle_init(Object *obj)
 
     sysbus_init_mmio(sbd, &phb->conf_mem);
     sysbus_init_mmio(sbd, &phb->data_mem);
+
+    object_property_add_link(obj, "pic", TYPE_HEATHROW,
+                             (Object **) &s->pic,
+                             qdev_prop_allow_set_link_before_realize,
+                             0, NULL);
 }
 
 static void grackle_pci_realize(PCIDevice *d, Error **errp)
@@ -148,17 +154,11 @@ static const TypeInfo grackle_pci_info = {
     },
 };
 
-static Property grackle_properties[] = {
-    DEFINE_PROP_PTR("pic", GrackleState, pic),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void grackle_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = grackle_realize;
-    dc->props = grackle_properties;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
 }
 
