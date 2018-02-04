@@ -34,6 +34,7 @@
 #include "net/net.h"
 #include "hw/isa/isa.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_host.h"
 #include "hw/boards.h"
 #include "hw/nvram/fw_cfg.h"
 #include "hw/char/escc.h"
@@ -52,6 +53,8 @@
 #define TBFREQ 16600000UL
 #define CLOCKFREQ 266000000UL
 #define BUSFREQ 66000000UL
+
+#define GRACKLE_BASE 0xfec00000
 
 #define NDRV_VGA_FILENAME "qemu_vga.ndrv"
 
@@ -258,10 +261,23 @@ static void ppc_heathrow_init(MachineState *machine)
         error_report("Only 6xx bus is supported on heathrow machine");
         exit(1);
     }
+
     pic_dev = heathrow_pic_init(1, heathrow_irqs, &pic);
-    pci_bus = pci_grackle_init(0xfec00000, pic_dev,
-                               get_system_memory(),
-                               get_system_io());
+
+    /* Grackle PCI host bridge */
+    dev = qdev_create(NULL, TYPE_GRACKLE_PCI_HOST_BRIDGE);
+    object_property_set_link(OBJECT(dev), OBJECT(pic_dev), "pic", &error_abort);
+    qdev_init_nofail(dev);
+    sbd = SYS_BUS_DEVICE(dev);
+    sysbus_mmio_map(sbd, 0, GRACKLE_BASE);
+    sysbus_mmio_map(sbd, 1, GRACKLE_BASE + 0x200000);
+
+    /* Map PCI hole */
+    memory_region_add_subregion(get_system_memory(), 0x80000000ULL,
+                                sysbus_mmio_get_region(sbd, 2));
+
+    pci_bus = PCI_HOST_BRIDGE(dev)->bus;
+
     pci_vga_init(pci_bus);
 
     escc_mem = escc_init(0, pic[0x0f], pic[0x10], serial_hds[0],

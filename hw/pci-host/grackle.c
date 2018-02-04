@@ -55,32 +55,6 @@ static void pci_grackle_set_irq(void *opaque, int irq_num, int level)
     qemu_set_irq(s->irqs[irq_num + 0x15], level);
 }
 
-PCIBus *pci_grackle_init(uint32_t base, DeviceState *pic,
-                         MemoryRegion *address_space_mem,
-                         MemoryRegion *address_space_io)
-{
-    DeviceState *dev;
-    SysBusDevice *s;
-    PCIHostState *phb;
-    GrackleState *d;
-
-    dev = qdev_create(NULL, TYPE_GRACKLE_PCI_HOST_BRIDGE);
-    object_property_set_link(OBJECT(dev), OBJECT(pic), "pic", &error_abort);
-    qdev_init_nofail(dev);
-
-    s = SYS_BUS_DEVICE(dev);
-    phb = PCI_HOST_BRIDGE(dev);
-    d = GRACKLE_PCI_HOST_BRIDGE(dev);
-
-    memory_region_add_subregion(address_space_mem, 0x80000000ULL,
-                                &d->pci_hole);
-
-    sysbus_mmio_map(s, 0, base);
-    sysbus_mmio_map(s, 1, base + 0x00200000);
-
-    return phb->bus;
-}
-
 static void grackle_realize(DeviceState *dev, Error **errp)
 {
     GrackleState *s = GRACKLE_PCI_HOST_BRIDGE(dev);
@@ -114,6 +88,7 @@ static void grackle_init(Object *obj)
 
     sysbus_init_mmio(sbd, &phb->conf_mem);
     sysbus_init_mmio(sbd, &phb->data_mem);
+    sysbus_init_mmio(sbd, &s->pci_hole);
 
     object_property_add_link(obj, "pic", TYPE_HEATHROW,
                              (Object **) &s->pic,
