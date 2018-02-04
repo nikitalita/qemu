@@ -180,6 +180,19 @@ static void heathrow_reset(DeviceState *d)
     s->pics[1].level_triggered = 0x1ff00000;
 }
 
+static void heathrow_realize(DeviceState *dev, Error **errp)
+{
+    HeathrowState *s = HEATHROW(dev);
+    int i;
+
+    s->irqs = g_new0(qemu_irq, s->nb_cpus);
+    for (i = 0; i < s->nb_cpus; i++) {
+        char *cpu_irq_name = g_strdup_printf("cpu%d-irq", i);
+        qdev_init_gpio_out_named(DEVICE(s), &s->irqs[i], cpu_irq_name, 1);
+        g_free(cpu_irq_name);
+    }
+}
+
 static void heathrow_init(Object *obj)
 {
     HeathrowState *s = HEATHROW(obj);
@@ -190,17 +203,22 @@ static void heathrow_init(Object *obj)
 
     sysbus_init_mmio(sbd, &s->mem);
 
-    /* only 1 CPU */
-    qdev_init_gpio_out(DEVICE(s), s->irqs, 1);
     qdev_init_gpio_in(DEVICE(s), heathrow_set_irq, HEATHROW_NUM_IRQS);
 }
+
+static Property heathrow_properties[] = {
+    DEFINE_PROP_UINT32("nb-cpus", HeathrowState, nb_cpus, 1),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static void heathrow_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
+    dc->realize = heathrow_realize;
     dc->reset = heathrow_reset;
     dc->vmsd = &vmstate_heathrow;
+    dc->props = heathrow_properties;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 

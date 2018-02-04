@@ -246,9 +246,11 @@ static void ppc_heathrow_init(MachineState *machine)
 
     /* Heathrow PIC */
     pic_dev = qdev_create(NULL, TYPE_HEATHROW);
+    qdev_prop_set_uint32(pic_dev, "nb-cpus", smp_cpus);
     qdev_init_nofail(pic_dev);
     /* XXX: we register only 1 output pin for heathrow PIC */
-    qdev_connect_gpio_out(pic_dev, 0, env->irq_inputs[PPC6xx_INPUT_INT]);
+    qdev_connect_gpio_out_named(pic_dev, "cpu0-irq", 0,
+                                env->irq_inputs[PPC6xx_INPUT_INT]);
 
     /* Grackle PCI host bridge */
     dev = qdev_create(NULL, TYPE_GRACKLE_PCI_HOST_BRIDGE);
@@ -267,8 +269,8 @@ static void ppc_heathrow_init(MachineState *machine)
     pci_vga_init(pci_bus);
 
     escc_mem = escc_init(0, qdev_get_gpio_in(pic_dev, 0xf),
-                            qdev_get_gpio_in(pic_dev, 0x10), serial_hds[0],
-                            serial_hds[1], ESCC_CLOCK, 4);
+                            qdev_get_gpio_in(pic_dev, 0x10),
+                            serial_hds[0], serial_hds[1], ESCC_CLOCK, 4);
     memory_region_init_alias(escc_bar, NULL, "escc-bar",
                              escc_mem, 0, memory_region_size(escc_mem));
 

@@ -41,7 +41,8 @@ typedef struct HeathrowState {
 
     MemoryRegion mem;
     HeathrowPICState pics[2];
-    qemu_irq irqs[1];
+    uint32_t nb_cpus;
+    qemu_irq *irqs;
     uint64_t last_levels;
 } HeathrowState;
 
