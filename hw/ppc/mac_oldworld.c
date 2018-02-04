@@ -30,6 +30,7 @@
 #include "mac.h"
 #include "hw/input/adb.h"
 #include "hw/timer/m48t59.h"
+#include "hw/intc/heathrow_pic.h"
 #include "sysemu/sysemu.h"
 #include "net/net.h"
 #include "hw/isa/isa.h"
@@ -87,7 +88,6 @@ static void ppc_heathrow_init(MachineState *machine)
     PowerPCCPU *cpu = NULL;
     CPUPPCState *env = NULL;
     char *filename;
-    qemu_irq *pic, **heathrow_irqs;
     int linux_boot, i;
     MemoryRegion *ram = g_new(MemoryRegion, 1);
     MemoryRegion *bios = g_new(MemoryRegion, 1);
@@ -231,24 +231,6 @@ static void ppc_heathrow_init(MachineState *machine)
                              get_system_io(), 0, 0x00200000);
     memory_region_add_subregion(sysmem, 0xfe000000, isa);
 
-    /* XXX: we register only 1 output pin for heathrow PIC */
-    heathrow_irqs = g_malloc0(smp_cpus * sizeof(qemu_irq *));
-    heathrow_irqs[0] =
-        g_malloc0(smp_cpus * sizeof(qemu_irq) * 1);
-    /* Connect the heathrow PIC outputs to the 6xx bus */
-    for (i = 0; i < smp_cpus; i++) {
-        switch (PPC_INPUT(env)) {
-        case PPC_FLAGS_INPUT_6xx:
-            heathrow_irqs[i] = heathrow_irqs[0] + (i * 1);
-            heathrow_irqs[i][0] =
-                ((qemu_irq *)env->irq_inputs)[PPC6xx_INPUT_INT];
-            break;
-        default:
-            error_report("Bus model not supported on OldWorld Mac machine");
-            exit(1);
-        }
-    }
-
     /* Timebase Frequency */
     if (kvm_enabled()) {
         tbfreq = kvmppc_get_tbfreq();
@@ -262,7 +244,11 @@ static void ppc_heathrow_init(MachineState *machine)
         exit(1);
     }
 
-    pic_dev = heathrow_pic_init(1, heathrow_irqs, &pic);
+    /* Heathrow PIC */
+    pic_dev = qdev_create(NULL, TYPE_HEATHROW);
+    qdev_init_nofail(pic_dev);
+    /* XXX: we register only 1 output pin for heathrow PIC */
+    qdev_connect_gpio_out(pic_dev, 0, env->irq_inputs[PPC6xx_INPUT_INT]);
 
     /* Grackle PCI host bridge */
     dev = qdev_create(NULL, TYPE_GRACKLE_PCI_HOST_BRIDGE);
@@ -280,24 +266,30 @@ static void ppc_heathrow_init(MachineState *machine)
 
     pci_vga_init(pci_bus);
 
-    escc_mem = escc_init(0, pic[0x0f], pic[0x10], serial_hds[0],
-                               serial_hds[1], ESCC_CLOCK, 4);
+    escc_mem = escc_init(0, qdev_get_gpio_in(pic_dev, 0xf),
+                            qdev_get_gpio_in(pic_dev, 0x10), serial_hds[0],
+                            serial_hds[1], ESCC_CLOCK, 4);
     memory_region_init_alias(escc_bar, NULL, "escc-bar",
                              escc_mem, 0, memory_region_size(escc_mem));
 
-    for(i = 0; i < nb_nics; i++)
+    for(i = 0; i < nb_nics; i++) {
         pci_nic_init_nofail(&nd_table[i], pci_bus, "ne2k_pci", NULL);
-
+    }
 
     ide_drive_get(hd, ARRAY_SIZE(hd));
 
     macio = pci_create(pci_bus, -1, TYPE_OLDWORLD_MACIO);
     dev = DEVICE(macio);
-    qdev_connect_gpio_out(dev, 0, pic[0x12]); /* CUDA */
-    qdev_connect_gpio_out(dev, 1, pic[0x0D]); /* IDE-0 */
-    qdev_connect_gpio_out(dev, 2, pic[0x02]); /* IDE-0 DMA */
-    qdev_connect_gpio_out(dev, 3, pic[0x0E]); /* IDE-1 */
-    qdev_connect_gpio_out(dev, 4, pic[0x03]); /* IDE-1 DMA */
+    /* CUDA */
+    qdev_connect_gpio_out(dev, 0, qdev_get_gpio_in(pic_dev, 0x12));
+    /* IDE-0 */
+    qdev_connect_gpio_out(dev, 1, qdev_get_gpio_in(pic_dev, 0xd));
+    /* IDE-0 DMA */
+    qdev_connect_gpio_out(dev, 2, qdev_get_gpio_in(pic_dev, 0x2));
+    /* IDE-1 */
+    qdev_connect_gpio_out(dev, 3, qdev_get_gpio_in(pic_dev, 0xe));
+    /* IDE-1 DMA */
+    qdev_connect_gpio_out(dev, 4, qdev_get_gpio_in(pic_dev, 0x3));
     qdev_prop_set_uint64(dev, "frequency", tbfreq);
     sbd = SYS_BUS_DEVICE(pic_dev);
     macio_init(macio, sysbus_mmio_get_region(sbd, 0), escc_bar);

@@ -189,24 +189,10 @@ static void heathrow_init(Object *obj)
                           "heathrow-pic", 0x1000);
 
     sysbus_init_mmio(sbd, &s->mem);
-}
 
-DeviceState *heathrow_pic_init(int nb_cpus, qemu_irq **irqs,
-                               qemu_irq **pic_irqs)
-{
-    DeviceState *d;
-    HeathrowState *s;
-
-    d = qdev_create(NULL, TYPE_HEATHROW);
-    qdev_init_nofail(d);
-
-    s = HEATHROW(d);
     /* only 1 CPU */
-    s->irqs = irqs[0];
-
-    *pic_irqs = qemu_allocate_irqs(heathrow_set_irq, s, HEATHROW_NUM_IRQS);
-
-    return d;
+    qdev_init_gpio_out(DEVICE(s), s->irqs, 1);
+    qdev_init_gpio_in(DEVICE(s), heathrow_set_irq, HEATHROW_NUM_IRQS);
 }
 
 static void heathrow_class_init(ObjectClass *oc, void *data)
