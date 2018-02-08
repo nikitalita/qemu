@@ -38,11 +38,11 @@
 
 /* XXX: implement all timer modes */
 
-#undef DEBUG_PMU
-#undef DEBUG_PMU_AUTOPOLL
-#undef DEBUG_PMU_ALL_MMIO
-#undef DEBUG_PMU_PROTOCOL
-#undef DEBUG_VIA
+#define DEBUG_PMU
+#define DEBUG_PMU_AUTOPOLL
+#define DEBUG_PMU_ALL_MMIO
+#define DEBUG_PMU_PROTOCOL
+#define DEBUG_VIA
 
 /* debug PMU packets */
 #define DEBUG_PMU_PACKET
@@ -641,7 +641,7 @@ static void pmu_update(PMUState *s)
         return;
     default:
         /* Invalid state, log and ignore */
-        PMU_DPRINTF("protocol error ! portB=0x%02x\n", s->b);
+        PMU_DPRINTF("protocol error ! portB=0x%02x\n", ms->b);
         return;
     }
 
@@ -687,7 +687,7 @@ static void pmu_update(PMUState *s)
         }
         if (s->cmdlen == -1) {
 #ifdef DEBUG_PMU_PROTOCOL
-            PMU_DPRINTF("got cmd length byte: %d\n", s->sr);
+            PMU_DPRINTF("got cmd length byte: %d\n", ms->sr);
 #endif
             s->cmdlen = ms->sr;
             if (s->cmdlen > sizeof(s->cmd_buf)) {
@@ -730,7 +730,7 @@ static void pmu_update(PMUState *s)
     }
     if (s->cmd_state == pmu_state_rsp && s->rsplen == s->cmd_rsp_pos) {
 #ifdef DEBUG_PMU_PROTOCOL
-        PMU_DPRINTF("Response send complete. IER=%02x\n", s->ier);
+        PMU_DPRINTF("Response send complete. IER=%02x\n", ms->ier);
 #endif
         s->cmd_state = pmu_state_idle;
     }
