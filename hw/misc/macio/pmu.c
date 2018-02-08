@@ -30,6 +30,7 @@
 #include "hw/hw.h"
 #include "hw/ppc/mac.h"
 #include "hw/input/adb.h"
+#include "hw/misc/mos6522.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
@@ -38,11 +39,11 @@
 
 /* XXX: implement all timer modes */
 
-#define DEBUG_PMU
-#define DEBUG_PMU_AUTOPOLL
-#define DEBUG_PMU_ALL_MMIO
-#define DEBUG_PMU_PROTOCOL
-#define DEBUG_VIA
+#undef DEBUG_PMU
+#undef DEBUG_PMU_AUTOPOLL
+#undef DEBUG_PMU_ALL_MMIO
+#undef DEBUG_PMU_PROTOCOL
+#undef DEBUG_VIA
 
 /* debug PMU packets */
 #define DEBUG_PMU_PACKET
@@ -197,7 +198,7 @@ typedef struct MOS6522PMUState {
 #define TYPE_MOS6522_PMU "mos6522-pmu"
 #define MOS6522_PMU(obj) OBJECT_CHECK(MOS6522PMUState, (obj), \
                                       TYPE_MOS6522_PMU)
-
+/*
 static void via_update_irq(PMUState *s)
 {
     MOS6522PMUState *mps = MOS6522_PMU(s->mos6522_pmu);
@@ -210,7 +211,7 @@ static void via_update_irq(PMUState *s)
         qemu_set_irq(s->via_irq, new_state);
     }
 }
-
+*/
 static void via_set_sr_int(void *opaque)
 {
     PMUState *s = opaque;
@@ -810,6 +811,8 @@ static void pmu_reset(DeviceState *dev)
 static void pmu_realizefn(DeviceState *dev, Error **errp)
 {
     PMUState *s = VIA_PMU(dev);
+    SysBusDevice *sbd;
+    MOS6522State *ms;
     DeviceState *d;
     struct tm tm;
 
@@ -819,6 +822,11 @@ static void pmu_realizefn(DeviceState *dev, Error **errp)
     object_property_set_link(OBJECT(d), OBJECT(s), "pmu", errp);
     qdev_init_nofail(d);
     s->mos6522_pmu = MOS6522_PMU(d);
+    
+    /* Pass IRQ from 6522 */
+    ms = MOS6522(d);
+    sbd = SYS_BUS_DEVICE(s);
+    sysbus_pass_irq(sbd, SYS_BUS_DEVICE(ms));
     
     qemu_get_timedate(&tm, 0);
     s->tick_offset = (uint32_t)mktimegm(&tm) + RTC_OFFSET;
@@ -847,7 +855,7 @@ static void pmu_initfn(Object *obj)
     memory_region_init_io(&s->mem, OBJECT(s),
                           &pmu_mm_ops, s, "via-pmu", 0x2000);
     sysbus_init_mmio(d, &s->mem);
-    sysbus_init_irq(d, &s->via_irq);
+    //sysbus_init_irq(d, &s->via_irq);
 }
 
 static Property pmu_properties[] = {
@@ -887,33 +895,31 @@ static void mos6522_pmu_portB_write(MOS6522State *s)
     }
     s->ifr &= ~CB1_INT;
     
-    via_update_irq(ps);
+    //via_update_irq(ps);
     pmu_update(ps);
 }
 
 static void mos6522_pmu_portA_write(MOS6522State *s)
 {
-    MOS6522PMUState *mcs = container_of(s, MOS6522PMUState, parent_obj);
-    PMUState *ps = VIA_PMU(mcs->pmu);
+    //MOS6522PMUState *mcs = container_of(s, MOS6522PMUState, parent_obj);
+    //PMUState *ps = VIA_PMU(mcs->pmu);
 
     if ((s->pcr & 0x0e) == 0x02 || (s->pcr & 0x0e) == 0x06) {
         s->ifr &= ~CA2_INT;
     }
     s->ifr &= ~CA1_INT;
         
-    via_update_irq(ps);
+    //via_update_irq(ps);
 }
 
 static void mos6522_pmu_realize(DeviceState *dev, Error **errp)
 {
     MOS6522State *ms = MOS6522(dev);
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(ms);
-    MOS6522PMUState *mps = MOS6522_PMU(dev);
-    PMUState *s = VIA_PMU(mps->pmu);
 
     mdc->parent_realize(dev, errp);
 
-    ms->timers[0].frequency = s->frequency;
+    ms->timers[0].frequency = VIA_TIMER_FREQ;
     ms->timers[1].frequency = (SCALE_US * 6000) / 4700;
 }
 
