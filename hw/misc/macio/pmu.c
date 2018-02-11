@@ -2,6 +2,7 @@
  * QEMU PowerMac PMU device support
  *
  * Copyright (c) 2016 Benjamin Herrenschmidt, IBM Corp.
+ * Copyright (c) 2018 Mark Cave-Ayland
  *
  * Based on the CUDA device by:
  *
@@ -26,16 +27,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/ppc/mac.h"
 #include "hw/input/adb.h"
 #include "hw/misc/mos6522.h"
+#include "hw/misc/macio/pmu.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "qemu/log.h"
-#include "pmu.h"
 
 /* XXX: implement all timer modes */
 
@@ -56,149 +58,15 @@
 #endif
 
 /* Bits in B data register: all active low */
-#define TACK		0x08		/* Transfer request (input) */
-#define TREQ		0x10		/* Transfer acknowledge (output) */
-
-/* Bits in IFR and IER */
-#define IER_SET		0x80		/* set bits in IER */
-#define IER_CLR		0		/* clear bits in IER */
-#define CA2_INT	        0x01
-#define CA1_INT 	0x02
-#define SR_INT		0x04		/* Shift register full/empty */
-#define CB2_INT	        0x08
-#define CB1_INT 	0x10
-#define T1_INT          0x40            /* Timer 1 interrupt */
-#define T2_INT          0x20            /* Timer 2 interrupt */
+#define TACK    0x08    /* Transfer request (input) */
+#define TREQ    0x10    /* Transfer acknowledge (output) */
 
 /* PMU returns time_t's offset from Jan 1, 1904, not 1970 */
 #define RTC_OFFSET                      2082844800
 
-/*
- * This table indicates for each PMU opcode:
- * - the number of data bytes to be sent with the command, or -1
- *   if a length byte should be sent,
- * - the number of response bytes which the PMU will return, or
- *   -1 if it will send a length byte.
- */
-static const int8_t pmu_data_len[256][2] = {
-/*	   0	   1	   2	   3	   4	   5	   6	   7  */
-/*00*/	{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*08*/	{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*10*/	{ 1, 0},{ 1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*18*/	{ 0, 1},{ 0, 1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{ 0, 0},
-/*20*/	{-1, 0},{ 0, 0},{ 2, 0},{ 1, 0},{ 1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*28*/	{ 0,-1},{ 0,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{ 0,-1},
-/*30*/	{ 4, 0},{20, 0},{-1, 0},{ 3, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*38*/	{ 0, 4},{ 0,20},{ 2,-1},{ 2, 1},{ 3,-1},{-1,-1},{-1,-1},{ 4, 0},
-/*40*/	{ 1, 0},{ 1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*48*/	{ 0, 1},{ 0, 1},{-1,-1},{ 1, 0},{ 1, 0},{-1,-1},{-1,-1},{-1,-1},
-/*50*/	{ 1, 0},{ 0, 0},{ 2, 0},{ 2, 0},{-1, 0},{ 1, 0},{ 3, 0},{ 1, 0},
-/*58*/	{ 0, 1},{ 1, 0},{ 0, 2},{ 0, 2},{ 0,-1},{-1,-1},{-1,-1},{-1,-1},
-/*60*/	{ 2, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*68*/	{ 0, 3},{ 0, 3},{ 0, 2},{ 0, 8},{ 0,-1},{ 0,-1},{-1,-1},{-1,-1},
-/*70*/	{ 1, 0},{ 1, 0},{ 1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*78*/	{ 0,-1},{ 0,-1},{-1,-1},{-1,-1},{-1,-1},{ 5, 1},{ 4, 1},{ 4, 1},
-/*80*/	{ 4, 0},{-1, 0},{ 0, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*88*/	{ 0, 5},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*90*/	{ 1, 0},{ 2, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*98*/	{ 0, 1},{ 0, 1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*a0*/	{ 2, 0},{ 2, 0},{ 2, 0},{ 4, 0},{-1, 0},{ 0, 0},{-1, 0},{-1, 0},
-/*a8*/	{ 1, 1},{ 1, 0},{ 3, 0},{ 2, 0},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*b0*/	{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*b8*/	{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*c0*/	{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*c8*/	{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-/*d0*/	{ 0, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*d8*/	{ 1, 1},{ 1, 1},{-1,-1},{-1,-1},{ 0, 1},{ 0,-1},{-1,-1},{-1,-1},
-/*e0*/	{-1, 0},{ 4, 0},{ 0, 1},{-1, 0},{-1, 0},{ 4, 0},{-1, 0},{-1, 0},
-/*e8*/	{ 3,-1},{-1,-1},{ 0, 1},{-1,-1},{ 0,-1},{-1,-1},{-1,-1},{ 0, 0},
-/*f0*/	{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},{-1, 0},
-/*f8*/	{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},{-1,-1},
-};
-
-/* Command protocol state machine */
-typedef enum {
-    pmu_state_idle, /* Waiting for command */
-    pmu_state_cmd,  /* Receiving command */
-    pmu_state_rsp,  /* Responding to command */
-} PMUCmdState;
-
-
-#define TYPE_VIA_PMU "via-pmu"
-#define VIA_PMU(obj) OBJECT_CHECK(PMUState, (obj), TYPE_VIA_PMU)
-
 /* XXX FIXME */
 #define VIA_TIMER_FREQ (4700000 / 6)
 
-/**
- * PMUState:
- * @last_b: last value of B register
- */
-
-typedef struct MOS6522PMUState MOS6522PMUState;
-
-typedef struct PMUState {
-    /*< private >*/
-    SysBusDevice parent_obj;
-    /*< public >*/
-
-    /* --- VIA state, to move into a different object ! --- */
-    MemoryRegion mem;
-
-    uint64_t frequency;
-    qemu_irq via_irq;
-    bool via_irq_state;
-
-    /* --- PMU state --- */
-    MOS6522PMUState *mos6522_pmu;
-
-    /* PMU low level protocol state */
-    PMUCmdState cmd_state;
-    uint8_t last_b;
-    uint8_t cmd;
-    int cmdlen;
-    int rsplen;
-    uint8_t cmd_buf_pos;
-    uint8_t cmd_buf[128];
-    uint8_t cmd_rsp_pos;
-    uint8_t cmd_rsp_sz;
-    uint8_t cmd_rsp[128];
-
-    /* PMU events/interrupts */
-    uint8_t intbits;
-    uint8_t intmask;
-
-    /* ADB */
-    bool has_adb;
-    ADBBusState adb_bus;
-    uint16_t adb_poll_mask;
-    uint8_t autopoll_rate_ms;
-    uint8_t autopoll_mask;
-    QEMUTimer *adb_poll_timer;
-    uint8_t adb_reply_size;
-    uint8_t adb_reply[ADB_MAX_OUT_LEN];
-
-    /* RTC */
-    uint32_t tick_offset;
-    QEMUTimer *one_sec_timer;
-    int64_t one_sec_target;
-
-    /* XXX HACK */
-    void *macio;
-} PMUState;
-
-/* MOS6522 PMU */
-typedef struct MOS6522PMUState {
-    /*< private >*/
-    MOS6522State parent_obj;
-
-    PMUState *pmu;
-} MOS6522PMUState;
-
-#define TYPE_MOS6522_PMU "mos6522-pmu"
-#define MOS6522_PMU(obj) OBJECT_CHECK(MOS6522PMUState, (obj), \
-                                      TYPE_MOS6522_PMU)
-/*
 static void via_update_irq(PMUState *s)
 {
     MOS6522PMUState *mps = MOS6522_PMU(s->mos6522_pmu);
@@ -211,7 +79,7 @@ static void via_update_irq(PMUState *s)
         qemu_set_irq(s->via_irq, new_state);
     }
 }
-*/
+
 static void via_set_sr_int(void *opaque)
 {
     PMUState *s = opaque;
@@ -895,21 +763,21 @@ static void mos6522_pmu_portB_write(MOS6522State *s)
     }
     s->ifr &= ~CB1_INT;
     
-    //via_update_irq(ps);
+    via_update_irq(ps);
     pmu_update(ps);
 }
 
 static void mos6522_pmu_portA_write(MOS6522State *s)
 {
-    //MOS6522PMUState *mcs = container_of(s, MOS6522PMUState, parent_obj);
-    //PMUState *ps = VIA_PMU(mcs->pmu);
+    MOS6522PMUState *mcs = container_of(s, MOS6522PMUState, parent_obj);
+    PMUState *ps = VIA_PMU(mcs->pmu);
 
     if ((s->pcr & 0x0e) == 0x02 || (s->pcr & 0x0e) == 0x06) {
         s->ifr &= ~CA2_INT;
     }
     s->ifr &= ~CA1_INT;
         
-    //via_update_irq(ps);
+    via_update_irq(ps);
 }
 
 static void mos6522_pmu_realize(DeviceState *dev, Error **errp)
@@ -927,7 +795,7 @@ static void mos6522_pmu_init(Object *obj)
 {
     MOS6522PMUState *s = MOS6522_PMU(obj);
 
-    object_property_add_link(obj, "pmu", TYPE_OBJECT,
+    object_property_add_link(obj, "pmu", TYPE_VIA_PMU,
                              (Object **) &s->pmu,
                              qdev_prop_allow_set_link_before_realize,
                              0, NULL);
