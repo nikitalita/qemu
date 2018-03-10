@@ -748,6 +748,7 @@ F: hw/ppc/mpc8544_guts.c
 
 New World
 M: Alexander Graf <agraf@suse.de>
+M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 L: qemu-ppc@nongnu.org
 S: Maintained
 F: hw/ppc/mac_newworld.c
@@ -759,6 +760,7 @@ F: hw/nvram/mac_nvram.c
 
 Old World
 M: Alexander Graf <agraf@suse.de>
+M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 L: qemu-ppc@nongnu.org
 S: Maintained
 F: hw/ppc/mac_oldworld.c
