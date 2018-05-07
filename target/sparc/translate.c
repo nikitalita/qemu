@@ -5326,7 +5326,13 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                 goto priv_insn;
                             dc->npc = DYNAMIC_PC;
                             dc->pc = DYNAMIC_PC;
+                            if (dc->tb->cflags & CF_USE_ICOUNT) {
+                                gen_io_start();
+                            }
                             gen_helper_done(cpu_env);
+                            if (dc->tb->cflags & CF_USE_ICOUNT) {
+                                gen_io_end();
+                            }
                             goto jmp_insn;
                         case 1:
                             if (!supervisor(dc))
@@ -5335,7 +5341,7 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                             dc->pc = DYNAMIC_PC;
                             if (dc->tb->cflags & CF_USE_ICOUNT) {
                                 gen_io_start();
-                            }                
+                            }
                             gen_helper_retry(cpu_env);
                             if (dc->tb->cflags & CF_USE_ICOUNT) {
                                 gen_io_end();
