@@ -4412,6 +4412,11 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                     tcg_temp_free_ptr(r_tickptr);
                                     if (dc->tb->cflags & CF_USE_ICOUNT) {
                                         gen_io_end();
+                                        /* End TB to handle timer interrupt */
+                                        save_state(dc);
+                                        gen_op_next_insn();
+                                        tcg_gen_exit_tb(0);
+                                        dc->is_br = 1;
                                     }
                                 }
                                 break;
@@ -4436,6 +4441,11 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                     tcg_temp_free_ptr(r_tickptr);
                                     if (dc->tb->cflags & CF_USE_ICOUNT) {
                                         gen_io_end();
+                                        /* End TB to handle timer interrupt */
+                                        save_state(dc);
+                                        gen_op_next_insn();
+                                        tcg_gen_exit_tb(0);
+                                        dc->is_br = 1;
                                     }
                                 }
                                 break;
@@ -4460,6 +4470,11 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                     tcg_temp_free_ptr(r_tickptr);
                                     if (dc->tb->cflags & CF_USE_ICOUNT) {
                                         gen_io_end();
+                                        /* End TB to handle timer interrupt */
+                                        save_state(dc);
+                                        gen_op_next_insn();
+                                        tcg_gen_exit_tb(0);
+                                        dc->is_br = 1;
                                     }
                                 }
                                 break;
@@ -4576,6 +4591,11 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                     tcg_temp_free_ptr(r_tickptr);
                                     if (dc->tb->cflags & CF_USE_ICOUNT) {
                                         gen_io_end();
+                                        /* End TB to handle timer interrupt */
+                                        save_state(dc);
+                                        gen_op_next_insn();
+                                        tcg_gen_exit_tb(0);
+                                        dc->is_br = 1;
                                     }
                                 }
                                 break;
@@ -4705,6 +4725,11 @@ static void disas_sparc_insn(DisasContext * dc, unsigned int insn)
                                     tcg_temp_free_ptr(r_tickptr);
                                     if (dc->tb->cflags & CF_USE_ICOUNT) {
                                         gen_io_end();
+                                        /* End TB to handle timer interrupt */
+                                        save_state(dc);
+                                        gen_op_next_insn();
+                                        tcg_gen_exit_tb(0);
+                                        dc->is_br = 1;
                                     }
                                 }
                                 break;
