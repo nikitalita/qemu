@@ -539,10 +539,10 @@ static char *core99_get_via_config(Object *obj, Error **errp)
     Core99MachineState *cms = CORE99_MACHINE(obj);
 
     switch (cms->via_config) {
-    default:
     case CORE99_VIA_CONFIG_CUDA:
         return g_strdup("cuda");
 
+    default:
     case CORE99_VIA_CONFIG_PMU:
         return g_strdup("pmu");
 
@@ -571,8 +571,8 @@ static void core99_instance_init(Object *obj)
 {
     Core99MachineState *cms = CORE99_MACHINE(obj);
 
-    /* Default via_config is CORE99_VIA_CONFIG_CUDA */
-    cms->via_config = CORE99_VIA_CONFIG_CUDA;
+    /* Default via_config is CORE99_VIA_CONFIG_PMU */
+    cms->via_config = CORE99_VIA_CONFIG_PMU;
     object_property_add_str(obj, "via", core99_get_via_config,
                             core99_set_via_config, NULL);
     object_property_set_description(obj, "via",
