@@ -24,3 +24,4 @@ config Q800
     select DP8393X
     select DJMEMC
     select IOSB
+    select ASC

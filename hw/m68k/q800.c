@@ -40,6 +40,7 @@
 #include "hw/misc/djmemc.h"
 #include "hw/misc/iosb.h"
 #include "hw/input/adb.h"
+#include "hw/audio/asc.h"
 #include "hw/nubus/mac-nubus-bridge.h"
 #include "hw/display/macfb.h"
 #include "hw/block/swim.h"
@@ -420,6 +421,17 @@ static void q800_init(MachineState *machine)
                                 sysbus_mmio_get_region(sysbus, 1));
 
     scsi_bus_legacy_handle_cmdline(&esp->bus);
+
+    /* Apple Sound Chip */
+
+    dev = qdev_create(NULL, TYPE_ASC);
+    qdev_prop_set_uint8(dev, "asctype", ASC_TYPE_ASC);
+    qdev_init_nofail(dev);
+    memory_region_add_subregion(&m->macio, ASC_OFFSET,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0));
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
+                       qdev_get_gpio_in_named(via_dev, "via2-irq",
+                                              VIA2_IRQ_ASC_BIT));
 
     /* SWIM floppy controller */
 
