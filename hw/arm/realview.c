@@ -16,6 +16,7 @@
 #include "hw/arm/primecell.h"
 #include "hw/devices.h"
 #include "hw/pci/pci.h"
+#include "hw/scsi/lsi53c895a.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
@@ -63,6 +64,7 @@ static void realview_init(MachineState *machine,
     MemoryRegion *ram_hack = g_new(MemoryRegion, 1);
     DeviceState *dev, *sysctl, *gpio2, *pl041;
     SysBusDevice *busdev;
+    LSIState *lsi;
     qemu_irq pic[64];
     qemu_irq mmc_irq[2];
     PCIBus *pci_bus = NULL;
@@ -257,7 +259,8 @@ static void realview_init(MachineState *machine,
         }
         n = drive_get_max_bus(IF_SCSI);
         while (n >= 0) {
-            lsi53c895a_create(pci_bus);
+            lsi = LSI53C895A(pci_create_simple(pci_bus, -1, TYPE_LSI53C895A));
+            scsi_bus_legacy_handle_cmdline(&lsi->bus);
             n--;
         }
     }

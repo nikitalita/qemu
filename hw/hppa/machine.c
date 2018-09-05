@@ -16,6 +16,7 @@
 #include "hw/ide.h"
 #include "hw/timer/i8254.h"
 #include "hw/char/serial.h"
+#include "hw/scsi/lsi53c895a.h"
 #include "hppa_sys.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
@@ -61,6 +62,7 @@ static void machine_hppa_init(MachineState *machine)
     const char *initrd_filename = machine->initrd_filename;
     PCIBus *pci_bus;
     ISABus *isa_bus;
+    LSIState *lsi;
     qemu_irq rtc_irq, serial_irq;
     char *firmware_filename;
     uint64_t firmware_low, firmware_high;
@@ -115,7 +117,8 @@ static void machine_hppa_init(MachineState *machine)
     }
 
     /* SCSI disk setup. */
-    lsi53c895a_create(pci_bus);
+    lsi = LSI53C895A(pci_create_simple(pci_bus, -1, TYPE_LSI53C895A));
+    scsi_bus_legacy_handle_cmdline(&lsi->bus);
 
     /* Network setup.  e1000 is good enough, failing Tulip support.  */
     for (i = 0; i < nb_nics; i++) {

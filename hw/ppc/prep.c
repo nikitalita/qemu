@@ -44,6 +44,7 @@
 #include "hw/input/i8042.h"
 #include "hw/isa/pc87312.h"
 #include "hw/net/ne2000-isa.h"
+#include "hw/scsi/lsi53c895a.h"
 #include "sysemu/arch_init.h"
 #include "sysemu/kvm.h"
 #include "sysemu/qtest.h"
@@ -623,6 +624,7 @@ static void ibm_40p_init(MachineState *machine)
     DeviceState *dev;
     SysBusDevice *pcihost, *s;
     Nvram *m48t59 = NULL;
+    LSIState *lsi;
     PCIBus *pci_bus;
     ISABus *isa_bus;
     void *fw_cfg;
@@ -702,7 +704,9 @@ static void ibm_40p_init(MachineState *machine)
         qdev_prop_set_uint32(dev, "equipment", 0xc0);
         qdev_init_nofail(dev);
 
-        lsi53c810_create(pci_bus, PCI_DEVFN(1, 0));
+        lsi = LSI53C810(pci_create_simple(pci_bus, PCI_DEVFN(1, 0),
+                                          TYPE_LSI53C810));
+        scsi_bus_legacy_handle_cmdline(&lsi->bus);
 
         /* XXX: s3-trio at PCI_DEVFN(2, 0) */
         pci_vga_init(pci_bus);

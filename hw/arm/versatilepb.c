@@ -19,6 +19,7 @@
 #include "hw/pci/pci.h"
 #include "hw/i2c/i2c.h"
 #include "hw/boards.h"
+#include "hw/scsi/lsi53c895a.h"
 #include "exec/address-spaces.h"
 #include "hw/block/flash.h"
 #include "qemu/error-report.h"
@@ -189,6 +190,7 @@ static void versatile_init(MachineState *machine, int board_id)
     DeviceState *dev, *sysctl;
     SysBusDevice *busdev;
     DeviceState *pl041;
+    LSIState *lsi;
     PCIBus *pci_bus;
     NICInfo *nd;
     I2CBus *i2c;
@@ -278,7 +280,8 @@ static void versatile_init(MachineState *machine, int board_id)
     }
     n = drive_get_max_bus(IF_SCSI);
     while (n >= 0) {
-        lsi53c895a_create(pci_bus);
+        lsi = LSI53C895A(pci_create_simple(pci_bus, -1, TYPE_LSI53C895A));
+        scsi_bus_legacy_handle_cmdline(&lsi->bus);
         n--;
     }
 
