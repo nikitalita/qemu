@@ -58,3 +58,6 @@ config S390_FLIC_KVM
 
 config OMPIC
     bool
+
+config Q800_IRQ
+    bool
