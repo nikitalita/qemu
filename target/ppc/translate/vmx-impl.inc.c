@@ -10,7 +10,7 @@
 static inline TCGv_ptr gen_avr_ptr(int reg)
 {
     TCGv_ptr r = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(r, cpu_env, offsetof(CPUPPCState, vsr[32 + reg].u64[0]));
+    tcg_gen_addi_ptr(r, cpu_env, vsr_full_offset(32 + reg));
     return r;
 }
 

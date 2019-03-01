@@ -2583,6 +2583,11 @@ static inline uint64_t *cpu_vsrl_ptr(CPUPPCState *env, int i)
     return (uint64_t *)env + (uintptr_t)vsrl_offset(i);
 }
 
+static inline int vsr_full_offset(int n)
+{
+    return offsetof(CPUPPCState, vsr[n].u64[0]);
+}
+
 static inline ppc_avr_t *cpu_avr_ptr(CPUPPCState *env, int i)
 {
     return &env->vsr[32 + i];
