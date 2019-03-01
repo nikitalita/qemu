@@ -2588,11 +2588,6 @@ static inline int vsr_full_offset(int n)
     return offsetof(CPUPPCState, vsr[n].u64[0]);
 }
 
-static inline long avr64_offset(int reg, bool high)
-{
-    return offsetof(CPUPPCState, vsr[32 + reg].u64[(high ? 0 : 1)]);
-}
-
 static inline ppc_avr_t *cpu_avr_ptr(CPUPPCState *env, int i)
 {
     return &env->vsr[32 + i];
