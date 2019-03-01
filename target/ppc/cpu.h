@@ -2573,9 +2573,14 @@ static inline uint64_t *cpu_fpr_ptr(CPUPPCState *env, int i)
     return (uint64_t *)env + (uintptr_t)fpr_offset(i);
 }
 
+static inline int vsrl_offset(int i)
+{
+    return offsetof(CPUPPCState, vsr[i].u64[1]);
+}
+
 static inline uint64_t *cpu_vsrl_ptr(CPUPPCState *env, int i)
 {
-    return &env->vsr[i].u64[1];
+    return (uint64_t *)env + (uintptr_t)vsrl_offset(i);
 }
 
 static inline ppc_avr_t *cpu_avr_ptr(CPUPPCState *env, int i)
