@@ -2565,7 +2565,11 @@ static inline bool lsw_reg_in_range(int start, int nregs, int rx)
 /* Accessors for FP, VMX and VSX registers */
 static inline int fpr_offset(int i)
 {
+#ifdef HOST_WORDS_BIGENDIAN
     return offsetof(CPUPPCState, vsr[i].u64[0]);
+#else
+    return offsetof(CPUPPCState, vsr[i].u64[1]);    
+#endif
 }
 
 static inline uint64_t *cpu_fpr_ptr(CPUPPCState *env, int i)
@@ -2575,7 +2579,11 @@ static inline uint64_t *cpu_fpr_ptr(CPUPPCState *env, int i)
 
 static inline int vsrl_offset(int i)
 {
+#ifdef HOST_WORDS_BIGENDIAN
     return offsetof(CPUPPCState, vsr[i].u64[1]);
+#else
+    return offsetof(CPUPPCState, vsr[i].u64[0]);    
+#endif
 }
 
 static inline uint64_t *cpu_vsrl_ptr(CPUPPCState *env, int i)
