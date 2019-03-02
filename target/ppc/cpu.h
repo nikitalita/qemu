@@ -2598,7 +2598,7 @@ static inline int vsr_full_offset(int n)
 
 static inline ppc_avr_t *cpu_avr_ptr(CPUPPCState *env, int i)
 {
-    return &env->vsr[32 + i];
+    return (ppc_avr_t *)env + (uintptr_t)vsr_full_offset(i + 32);
 }
 
 void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUPPCState *env);
