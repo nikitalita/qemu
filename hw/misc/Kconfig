@@ -134,4 +134,7 @@ config MAC_VIA
 config DJMEMC
     bool
 
+config IOSB
+    bool
+
 source macio/Kconfig
