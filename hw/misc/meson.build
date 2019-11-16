@@ -23,6 +23,7 @@ softmmu_ss.add(when: 'CONFIG_ARM11SCU', if_true: files('arm11scu.c'))
 # Mac devices
 softmmu_ss.add(when: 'CONFIG_MOS6522', if_true: files('mos6522.c'))
 specific_ss.add(when: 'CONFIG_DJMEMC', if_true: files('djmemc.c'))
+softmmu_ss.add(when: 'CONFIG_IOSB', if_true: files('iosb.c'))
 
 # RISC-V devices
 softmmu_ss.add(when: 'CONFIG_MCHP_PFSOC_DMC', if_true: files('mchp_pfsoc_dmc.c'))

@@ -24,3 +24,4 @@ config Q800
     select DP8393X
     select OR_IRQ
     select DJMEMC
+    select IOSB
