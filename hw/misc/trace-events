@@ -263,3 +263,7 @@ virt_ctrl_write(void *dev, unsigned int addr, unsigned int size, uint64_t value)
 virt_ctrl_reset(void *dev) "ctrl: %p"
 virt_ctrl_realize(void *dev) "ctrl: %p"
 virt_ctrl_instance_init(void *dev) "ctrl: %p"
+
+# djmemc.c
+djmemc_read(int reg, unsigned size, uint64_t value) "reg=0x%x size=%u value=0x%"PRIx64
+djmemc_write(int reg, unsigned size, uint64_t value) "reg=0x%x size=%u value=0x%"PRIx64
