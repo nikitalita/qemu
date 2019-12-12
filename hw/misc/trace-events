@@ -237,3 +237,7 @@ pca955x_gpio_change(const char *description, unsigned id, unsigned prev_state, u
 bcm2835_cprman_read(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 " value:0x%" PRIx64
 bcm2835_cprman_write(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 " value:0x%" PRIx64
 bcm2835_cprman_write_invalid_magic(uint64_t offset, uint64_t value) "offset:0x%" PRIx64 " value:0x%" PRIx64
+
+# djmemc.c
+djMEMC_read(int reg, unsigned size, uint64_t value) "reg=%d size=%u value=0x%"PRIx64
+djMEMC_write(int reg, unsigned size, uint64_t value) "reg=%d size=%u value=0x%"PRIx64

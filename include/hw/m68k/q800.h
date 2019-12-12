@@ -24,20 +24,6 @@
 #define HW_Q800_H
 
 /*
- * The GLUE (General Logic Unit) is an Apple custom integrated circuit chip
- * that performs a variety of functions (RAM management, clock generation, ...).
- * The GLUE chip receives interrupt requests from various devices,
- * assign priority to each, and asserts one or more interrupt line to the
- * CPU.
- */
-
-typedef struct {
-    M68kCPU *cpu;
-    uint8_t ipr;
-} GLUEState;
-
-
-/*
  * The main Q800 machine
  */
 
@@ -46,7 +32,6 @@ typedef struct Q800MachineState {
 
     M68kCPU *cpu;
     MemoryRegion rom;
-    GLUEState glue;
 
     MemoryRegion macio;
     MemoryRegion macio_alias;
