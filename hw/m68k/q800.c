@@ -102,6 +102,7 @@ typedef struct Q800MachineState {
 
     MemoryRegion macio;
     MemoryRegion macio_alias;
+    MemoryRegion machine_id;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
@@ -165,6 +166,26 @@ static void main_cpu_reset(void *opaque)
     cpu->env.pc = ldl_phys(cs->as, 4);
 }
 
+static uint64_t machine_id_read(void *opaque, hwaddr addr, unsigned size)
+{
+    return 0xa55a2bad; /* Quadra 800 ID */
+}
+
+static void machine_id_write(void *opaque, hwaddr addr, uint64_t val,
+                             unsigned size)
+{
+}
+
+static const MemoryRegionOps machine_id_ops = {
+    .read = machine_id_read,
+    .write = machine_id_write,
+    .endianness = DEVICE_BIG_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void q800_machine_init(MachineState *machine)
 {
     Q800MachineState *m = Q800_MACHINE(machine);
@@ -221,6 +242,11 @@ static void q800_machine_init(MachineState *machine)
                           "mac-io.alias", IO_SIZE - IO_SLICE);
     memory_region_add_subregion(get_system_memory(), IO_BASE + IO_SLICE,
                                 &m->macio_alias);
+
+    memory_region_init_io(&m->machine_id, NULL, &machine_id_ops, NULL,
+                          "Machine ID", 4);
+    memory_region_add_subregion(get_system_memory(), 0x5ffffffc,
+                                &m->machine_id);
 
     /* djMEMC memory and interrupt controller */
 
