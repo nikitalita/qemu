@@ -40,6 +40,7 @@
 #include "bootinfo.h"
 #include "hw/m68k/q800.h"
 #include "hw/misc/mac_via.h"
+#include "hw/misc/djmemc.h"
 #include "hw/input/adb.h"
 #include "hw/nubus/mac-nubus-bridge.h"
 #include "hw/display/macfb.h"
@@ -73,6 +74,7 @@
 #define SONIC_PROM_BASE       (IO_BASE + 0x08000)
 #define SONIC_BASE            (IO_BASE + 0x0a000)
 #define SCC_BASE              (IO_BASE + 0x0c020)
+#define DJMEMC_BASE           (IO_BASE + 0x0e000)
 #define ESP_BASE              (IO_BASE + 0x10000)
 #define ESP_PDMA              (IO_BASE + 0x10100)
 #define ASC_BASE              (IO_BASE + 0x14000)
@@ -89,79 +91,6 @@
 #define VIDEO_BASE            0xf9001000
 
 #define MAC_CLOCK  3686418
-
-
-static void GLUE_set_irq(void *opaque, int irq, int level)
-{
-    GLUEState *s = opaque;
-    int i;
-
-    if (level) {
-        s->ipr |= 1 << irq;
-    } else {
-        s->ipr &= ~(1 << irq);
-    }
-
-    for (i = 7; i >= 0; i--) {
-        if ((s->ipr >> i) & 1) {
-            m68k_set_irq_level(s->cpu, i + 1, i + 25);
-            return;
-        }
-    }
-    m68k_set_irq_level(s->cpu, 0, 0);
-}
-
-static void glue_reset(DeviceState *dev)
-{
-    GLUEState *s = GLUE(dev);
-
-    s->ipr = 0;
-}
-
-static const VMStateDescription vmstate_glue = {
-    .name = "q800-glue",
-    .version_id = 0,
-    .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
-        VMSTATE_UINT8(ipr, GLUEState),
-        VMSTATE_END_OF_LIST(),
-    },
-};
-
-/*
- * If the m68k CPU implemented its inbound irq lines as GPIO lines
- * rather than via the m68k_set_irq_level() function we would not need
- * this cpu link property and could instead provide outbound IRQ lines
- * that the board could wire up to the CPU.
- */
-static Property glue_properties[] = {
-    DEFINE_PROP_LINK("cpu", GLUEState, cpu, TYPE_M68K_CPU, M68kCPU *),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static void glue_init(Object *obj)
-{
-    DeviceState *dev = DEVICE(obj);
-
-    qdev_init_gpio_in(dev, GLUE_set_irq, 8);
-}
-
-static void glue_class_init(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-
-    dc->vmsd = &vmstate_glue;
-    dc->reset = glue_reset;
-    device_class_set_props(dc, glue_properties);
-}
-
-static const TypeInfo glue_info = {
-    .name = TYPE_GLUE,
-    .parent = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(GLUEState),
-    .instance_init = glue_init,
-    .class_init = glue_class_init,
-};
 
 
 static MemTxResult macio_alias_read(void *opaque, hwaddr addr, uint64_t *data,
@@ -299,10 +228,15 @@ static void q800_init(MachineState *machine)
     memory_region_add_subregion(get_system_memory(), IO_BASE + IO_SLICE,
                                 &m->macio_alias);
 
-    /* IRQ Glue */
-    m->glue = qdev_new(TYPE_GLUE);
-    object_property_set_link(OBJECT(m->glue), "cpu", OBJECT(m->cpu), &error_abort);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(m->glue), &error_fatal);
+    /* djMEMC memory and interrupt controller */
+
+    m->djmemc = qdev_new(TYPE_DJMEMC);
+    object_property_set_link(OBJECT(m->djmemc), "cpu", OBJECT(m->cpu),
+                             &error_abort);
+    sysbus = SYS_BUS_DEVICE(m->djmemc);
+    sysbus_realize_and_unref(sysbus, &error_fatal);
+    memory_region_add_subregion(&m->macio, DJMEMC_BASE - IO_BASE,
+                                sysbus_mmio_get_region(sysbus, 0));
 
     /* VIA */
 
@@ -316,9 +250,9 @@ static void q800_init(MachineState *machine)
     memory_region_add_subregion(&m->macio, VIA_BASE - IO_BASE,
                                 sysbus_mmio_get_region(sysbus, 0));
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 0,
-                                qdev_get_gpio_in(m->glue, 0));
+                                qdev_get_gpio_in(m->djmemc, 0));
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 1,
-                                qdev_get_gpio_in(m->glue, 1));
+                                qdev_get_gpio_in(m->djmemc, 1));
 
 
     adb_bus = qdev_get_child_bus(via_dev, "adb.0");
@@ -361,7 +295,7 @@ static void q800_init(MachineState *machine)
                                 sysbus_mmio_get_region(sysbus, 0));
     memory_region_add_subregion(&m->macio, SONIC_PROM_BASE - IO_BASE,
                                 sysbus_mmio_get_region(sysbus, 1));
-    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(m->glue, 2));
+    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(m->djmemc, 2));
 
     /* SCC */
 
@@ -383,9 +317,10 @@ static void q800_init(MachineState *machine)
     qdev_realize_and_unref(escc_orgate, NULL, &error_fatal);
     sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(escc_orgate, 0));
     sysbus_connect_irq(sysbus, 1, qdev_get_gpio_in(escc_orgate, 1));
-    qdev_connect_gpio_out(DEVICE(escc_orgate), 0, qdev_get_gpio_in(m->glue, 3));
+    qdev_connect_gpio_out(DEVICE(escc_orgate), 0, qdev_get_gpio_in(m->djmemc, 3));
     memory_region_add_subregion(&m->macio, SCC_BASE - IO_BASE,
                                 sysbus_mmio_get_region(sysbus, 0));
+
 
     /* SCSI */
 
@@ -558,7 +493,6 @@ static const TypeInfo q800_machine_typeinfo = {
 static void q800_machine_register_types(void)
 {
     type_register_static(&q800_machine_typeinfo);
-    type_register_static(&glue_info);
 }
 
 type_init(q800_machine_register_types)
