@@ -53,6 +53,7 @@ typedef struct Q800MachineState {
     DeviceState *glue;
 
     MemoryRegion macio;
+    MemoryRegion macio_alias;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
