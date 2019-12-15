@@ -62,6 +62,7 @@
 
 #define IO_BASE               0x50000000
 #define IO_SLICE              0x00040000
+#define IO_SLICE_MASK         (IO_SLICE - 1)
 #define IO_SIZE               0x04000000
 
 /* Offsets from IO_BASE */
@@ -132,10 +133,58 @@ typedef struct Q800MachineState {
     GLUEState glue;
 
     MemoryRegion macio;
+    MemoryRegion macio_alias;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
 #define Q800_MACHINE(obj) OBJECT_CHECK(Q800MachineState, (obj), TYPE_Q800_MACHINE)
+
+
+static MemTxResult macio_alias_read(void *opaque, hwaddr addr, uint64_t *data,
+                                    unsigned size, MemTxAttrs attrs)
+{
+    MemoryRegion *mr = opaque;
+    MemoryRegionSection mrs;
+
+    addr &= IO_SLICE_MASK;
+    mrs = memory_region_find(mr, addr, size);
+
+    if (mrs.mr) {
+        return memory_region_dispatch_read(mrs.mr, mrs.offset_within_region,
+                                           data, size_memop(size) | MO_BE,
+                                           attrs);
+    } else {
+        return MEMTX_ERROR;
+    }
+}
+
+static MemTxResult macio_alias_write(void *opaque, hwaddr addr, uint64_t value,
+                                     unsigned size, MemTxAttrs attrs)
+{
+    MemoryRegion *mr = opaque;
+    MemoryRegionSection mrs;
+
+    addr &= IO_SLICE_MASK;
+    mrs = memory_region_find(mr, addr, size);
+
+    if (mrs.mr) {
+        return memory_region_dispatch_write(mrs.mr, mrs.offset_within_region,
+                                            value, size_memop(size) | MO_BE,
+                                            attrs);
+    } else {
+        return MEMTX_ERROR;
+    }
+}
+
+static const MemoryRegionOps macio_alias_ops = {
+    .read_with_attrs = macio_alias_read,
+    .write_with_attrs = macio_alias_write,
+    .endianness = DEVICE_BIG_ENDIAN,
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+    },
+};
 
 
 static void main_cpu_reset(void *opaque)
@@ -158,9 +207,6 @@ static void q800_machine_init(MachineState *machine)
     int bios_size;
     ram_addr_t initrd_base;
     int32_t initrd_size;
-    MemoryRegion *io;
-    const int io_slice_nb = (IO_SIZE / IO_SLICE) - 1;
-    int i;
     ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *initrd_filename = machine->initrd_filename;
@@ -203,16 +249,10 @@ static void q800_machine_init(MachineState *machine)
      * Memory from IO_BASE to IO_BASE + IO_SLICE is repeated
      * from IO_BASE + IO_SLICE to IO_BASE + IO_SIZE
      */
-    io = g_new(MemoryRegion, io_slice_nb);
-    for (i = 0; i < io_slice_nb; i++) {
-        char *name = g_strdup_printf("mac_m68k.io[%d]", i + 1);
-
-        memory_region_init_alias(&io[i], NULL, name, get_system_memory(),
-                                 IO_BASE, IO_SLICE);
-        memory_region_add_subregion(get_system_memory(),
-                                    IO_BASE + (i + 1) * IO_SLICE, &io[i]);
-        g_free(name);
-    }
+    memory_region_init_io(&m->macio_alias, NULL, &macio_alias_ops, &m->macio,
+                          "mac-io.alias", IO_SIZE - IO_SLICE);
+    memory_region_add_subregion(get_system_memory(), IO_BASE + IO_SLICE,
+                                &m->macio_alias);
 
     /* IRQ Glue */
 
