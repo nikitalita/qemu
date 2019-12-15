@@ -48,7 +48,7 @@
 #include "sysemu/runstate.h"
 #include "sysemu/reset.h"
 
-#define MACROM_ADDR     0x40000000
+#define MACROM_ADDR     0x40800000
 #define MACROM_SIZE     0x00100000
 
 #define MACROM_FILENAME "MacROM.bin"
