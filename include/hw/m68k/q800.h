@@ -29,9 +29,11 @@
 
 typedef struct Q800MachineState {
     MachineState parent_obj;
+
+    M68kCPU *cpu;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
-OBJECT_DECLARE_SIMPLE_TYPE(Q800MachineState, q800, Q800_MACHINE, MachineState)
+OBJECT_DECLARE_SIMPLE_TYPE(Q800MachineState, Q800_MACHINE)
 
 #endif
