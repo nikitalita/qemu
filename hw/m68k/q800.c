@@ -86,19 +86,6 @@
 
 #define MAC_CLOCK  3686418
 
-/*
- * The GLUE (General Logic Unit) is an Apple custom integrated circuit chip
- * that performs a variety of functions (RAM management, clock generation, ...).
- * The GLUE chip receives interrupt requests from various devices,
- * assign priority to each, and asserts one or more interrupt line to the
- * CPU.
- */
-
-typedef struct {
-    M68kCPU *cpu;
-    uint8_t ipr;
-} GLUEState;
-
 static void GLUE_set_irq(void *opaque, int irq, int level)
 {
     GLUEState *s = opaque;
@@ -176,7 +163,6 @@ static void q800_init(MachineState *machine)
     SysBusDevice *sysbus;
     BusState *adb_bus;
     NubusBus *nubus;
-    GLUEState *irq;
     qemu_irq *pic;
     DriveInfo *dinfo;
 
@@ -212,9 +198,8 @@ static void q800_init(MachineState *machine)
 
     /* IRQ Glue */
 
-    irq = g_new0(GLUEState, 1);
-    irq->cpu = m->cpu;
-    pic = qemu_allocate_irqs(GLUE_set_irq, irq, 8);
+    m->glue.cpu = m->cpu;
+    pic = qemu_allocate_irqs(GLUE_set_irq, &m->glue, 8);
 
     /* VIA */
 
