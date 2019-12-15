@@ -118,6 +118,18 @@ static void GLUE_set_irq(void *opaque, int irq, int level)
     m68k_set_irq_level(s->cpu, 0, 0);
 }
 
+/*
+ * The main Q800 machine
+ */
+
+typedef struct Q800MachineState {
+    MachineState parent_obj;
+} Q800MachineState;
+
+#define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
+#define Q800_MACHINE(obj) OBJECT_CHECK(Q800MachineState, (obj), TYPE_Q800_MACHINE)
+
+
 static void main_cpu_reset(void *opaque)
 {
     M68kCPU *cpu = opaque;
@@ -444,6 +456,7 @@ static void q800_machine_class_init(ObjectClass *oc, void *data)
 static const TypeInfo q800_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("q800"),
     .parent     = TYPE_MACHINE,
+    .instance_size = sizeof(Q800MachineState),
     .class_init = q800_machine_class_init,
 };
 
