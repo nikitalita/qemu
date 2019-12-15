@@ -126,6 +126,8 @@ typedef struct Q800MachineState {
     MachineState parent_obj;
 
     M68kCPU *cpu;
+    MemoryRegion rom;
+    MemoryRegion ram;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
@@ -152,8 +154,6 @@ static void q800_machine_init(MachineState *machine)
     int bios_size;
     ram_addr_t initrd_base;
     int32_t initrd_size;
-    MemoryRegion *rom;
-    MemoryRegion *ram;
     MemoryRegion *io;
     const int io_slice_nb = (IO_SIZE / IO_SLICE) - 1;
     int i;
@@ -186,9 +186,9 @@ static void q800_machine_init(MachineState *machine)
     qemu_register_reset(main_cpu_reset, m->cpu);
 
     /* RAM */
-    ram = g_malloc(sizeof(*ram));
-    memory_region_init_ram(ram, NULL, "m68k_mac.ram", ram_size, &error_abort);
-    memory_region_add_subregion(get_system_memory(), 0, ram);
+    memory_region_init_ram(&m->ram, NULL, "m68k_mac.ram", ram_size,
+                           &error_abort);
+    memory_region_add_subregion(get_system_memory(), 0, &m->ram);
 
     /*
      * Memory from IO_BASE to IO_BASE + IO_SLICE is repeated
@@ -381,15 +381,14 @@ static void q800_machine_init(MachineState *machine)
     } else {
         uint8_t *ptr;
         /* allocate and load BIOS */
-        rom = g_malloc(sizeof(*rom));
-        memory_region_init_ram(rom, NULL, "m68k_mac.rom", MACROM_SIZE,
+        memory_region_init_ram(&m->rom, NULL, "m68k_mac.rom", MACROM_SIZE,
                                &error_abort);
         if (bios_name == NULL) {
             bios_name = MACROM_FILENAME;
         }
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-        memory_region_set_readonly(rom, true);
-        memory_region_add_subregion(get_system_memory(), MACROM_ADDR, rom);
+        memory_region_set_readonly(&m->rom, true);
+        memory_region_add_subregion(get_system_memory(), MACROM_ADDR, &m->rom);
 
         /* Load MacROM binary */
         if (filename) {
