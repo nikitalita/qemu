@@ -128,6 +128,7 @@ typedef struct Q800MachineState {
     M68kCPU *cpu;
     MemoryRegion rom;
     MemoryRegion ram;
+    GLUEState glue;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
@@ -170,7 +171,6 @@ static void q800_machine_init(MachineState *machine)
     SysBusDevice *sysbus;
     BusState *adb_bus;
     NubusBus *nubus;
-    GLUEState *irq;
     qemu_irq *pic;
 
     linux_boot = (kernel_filename != NULL);
@@ -207,9 +207,8 @@ static void q800_machine_init(MachineState *machine)
 
     /* IRQ Glue */
 
-    irq = g_new0(GLUEState, 1);
-    irq->cpu = m->cpu;
-    pic = qemu_allocate_irqs(GLUE_set_irq, irq, 8);
+    m->glue.cpu = m->cpu;
+    pic = qemu_allocate_irqs(GLUE_set_irq, &m->glue, 8);
 
     /* VIA */
 
