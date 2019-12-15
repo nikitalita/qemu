@@ -51,6 +51,8 @@ typedef struct Q800MachineState {
     M68kCPU *cpu;
     MemoryRegion rom;
     DeviceState *glue;
+
+    MemoryRegion macio;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
