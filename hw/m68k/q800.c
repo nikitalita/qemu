@@ -152,7 +152,7 @@ static uint8_t fake_mac_rom[] = {
 
 static void q800_init(MachineState *machine)
 {
-    M68kCPU *cpu = NULL;
+    Q800MachineState *m = Q800_MACHINE(machine);
     int linux_boot;
     int32_t kernel_size;
     uint64_t elf_entry;
@@ -190,8 +190,8 @@ static void q800_init(MachineState *machine)
     }
 
     /* init CPUs */
-    cpu = M68K_CPU(cpu_create(machine->cpu_type));
-    qemu_register_reset(main_cpu_reset, cpu);
+    m->cpu = M68K_CPU(cpu_create(machine->cpu_type));
+    qemu_register_reset(main_cpu_reset, m->cpu);
 
     /* RAM */
     memory_region_add_subregion(get_system_memory(), 0, machine->ram);
@@ -214,7 +214,7 @@ static void q800_init(MachineState *machine)
     /* IRQ Glue */
 
     irq = g_new0(GLUEState, 1);
-    irq->cpu = cpu;
+    irq->cpu = m->cpu;
     pic = qemu_allocate_irqs(GLUE_set_irq, irq, 8);
 
     /* VIA */
@@ -335,7 +335,7 @@ static void q800_init(MachineState *machine)
     qdev_prop_set_uint8(dev, "depth", graphic_depth);
     qdev_realize_and_unref(dev, BUS(nubus), &error_fatal);
 
-    cs = CPU(cpu);
+    cs = CPU(m->cpu);
     if (linux_boot) {
         uint64_t high;
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
