@@ -118,6 +118,18 @@ static void GLUE_set_irq(void *opaque, int irq, int level)
     m68k_set_irq_level(s->cpu, 0, 0);
 }
 
+/*
+ * The main Q800 machine
+ */
+
+typedef struct Q800MachineState {
+    MachineState parent_obj;
+} Q800MachineState;
+
+#define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
+#define Q800_MACHINE(obj) OBJECT_CHECK(Q800MachineState, (obj), TYPE_Q800_MACHINE)
+
+
 static void main_cpu_reset(void *opaque)
 {
     M68kCPU *cpu = opaque;
@@ -128,7 +140,7 @@ static void main_cpu_reset(void *opaque)
     cpu->env.pc = ldl_phys(cs->as, 4);
 }
 
-static void q800_init(MachineState *machine)
+static void q800_machine_init(MachineState *machine)
 {
     M68kCPU *cpu = NULL;
     int linux_boot;
@@ -404,7 +416,7 @@ static void q800_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     mc->desc = "Macintosh Quadra 800";
-    mc->init = q800_init;
+    mc->init = q800_machine_init;
     mc->default_cpu_type = M68K_CPU_TYPE_NAME("m68040");
     mc->max_cpus = 1;
     mc->is_default = 0;
@@ -414,6 +426,7 @@ static void q800_machine_class_init(ObjectClass *oc, void *data)
 static const TypeInfo q800_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("q800"),
     .parent     = TYPE_MACHINE,
+    .instance_size = sizeof(Q800MachineState),
     .class_init = q800_machine_class_init,
 };
 
