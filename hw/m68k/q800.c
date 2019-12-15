@@ -89,22 +89,6 @@
 
 #define MAC_CLOCK  3686418
 
-/*
- * The GLUE (General Logic Unit) is an Apple custom integrated circuit chip
- * that performs a variety of functions (RAM management, clock generation, ...).
- * The GLUE chip receives interrupt requests from various devices,
- * assign priority to each, and asserts one or more interrupt line to the
- * CPU.
- */
-
-#define TYPE_GLUE "q800-glue"
-OBJECT_DECLARE_SIMPLE_TYPE(GLUEState, GLUE)
-
-struct GLUEState {
-    SysBusDevice parent_obj;
-    M68kCPU *cpu;
-    uint8_t ipr;
-};
 
 static void GLUE_set_irq(void *opaque, int irq, int level)
 {
@@ -237,7 +221,6 @@ static void q800_init(MachineState *machine)
     SysBusDevice *sysbus;
     BusState *adb_bus;
     NubusBus *nubus;
-    DeviceState *glue;
     DriveInfo *dinfo;
 
     linux_boot = (kernel_filename != NULL);
@@ -271,9 +254,9 @@ static void q800_init(MachineState *machine)
     }
 
     /* IRQ Glue */
-    glue = qdev_new(TYPE_GLUE);
-    object_property_set_link(OBJECT(glue), "cpu", OBJECT(m->cpu), &error_abort);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(glue), &error_fatal);
+    m->glue = qdev_new(TYPE_GLUE);
+    object_property_set_link(OBJECT(m->glue), "cpu", OBJECT(m->cpu), &error_abort);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(m->glue), &error_fatal);
 
     /* VIA */
 
@@ -286,9 +269,9 @@ static void q800_init(MachineState *machine)
     sysbus_realize_and_unref(sysbus, &error_fatal);
     sysbus_mmio_map(sysbus, 0, VIA_BASE);
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 0,
-                                qdev_get_gpio_in(glue, 0));
+                                qdev_get_gpio_in(m->glue, 0));
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 1,
-                                qdev_get_gpio_in(glue, 1));
+                                qdev_get_gpio_in(m->glue, 1));
 
 
     adb_bus = qdev_get_child_bus(via_dev, "adb.0");
@@ -329,7 +312,7 @@ static void q800_init(MachineState *machine)
     sysbus_realize_and_unref(sysbus, &error_fatal);
     sysbus_mmio_map(sysbus, 0, SONIC_BASE);
     sysbus_mmio_map(sysbus, 1, SONIC_PROM_BASE);
-    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(glue, 2));
+    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(m->glue, 2));
 
     /* SCC */
 
@@ -351,7 +334,7 @@ static void q800_init(MachineState *machine)
     qdev_realize_and_unref(escc_orgate, NULL, &error_fatal);
     sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(escc_orgate, 0));
     sysbus_connect_irq(sysbus, 1, qdev_get_gpio_in(escc_orgate, 1));
-    qdev_connect_gpio_out(DEVICE(escc_orgate), 0, qdev_get_gpio_in(glue, 3));
+    qdev_connect_gpio_out(DEVICE(escc_orgate), 0, qdev_get_gpio_in(m->glue, 3));
     sysbus_mmio_map(sysbus, 0, SCC_BASE);
 
     /* SCSI */
