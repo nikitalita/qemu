@@ -64,14 +64,15 @@
 #define IO_SLICE              0x00040000
 #define IO_SIZE               0x04000000
 
-#define VIA_BASE              (IO_BASE + 0x00000)
-#define SONIC_PROM_BASE       (IO_BASE + 0x08000)
-#define SONIC_BASE            (IO_BASE + 0x0a000)
-#define SCC_BASE              (IO_BASE + 0x0c020)
-#define ESP_BASE              (IO_BASE + 0x10000)
-#define ESP_PDMA              (IO_BASE + 0x10100)
-#define ASC_BASE              (IO_BASE + 0x14000)
-#define SWIM_BASE             (IO_BASE + 0x1E000)
+/* Offsets from IO_BASE */
+#define VIA_OFFSET            0x00000
+#define SONIC_PROM_OFFSET     0x08000
+#define SONIC_OFFSET          0x0a000
+#define SCC_OFFSET            0x0c020
+#define ESP_OFFSET            0x10000
+#define ESP_PDMA_OFFSET       0x10100
+#define ASC_OFFSET            0x14000
+#define SWIM_OFFSET           0x1E000
 
 #define NUBUS_SUPER_SLOT_BASE 0x60000000
 #define NUBUS_SLOT_BASE       0xf0000000
@@ -128,6 +129,8 @@ typedef struct Q800MachineState {
     M68kCPU *cpu;
     MemoryRegion rom;
     GLUEState glue;
+
+    MemoryRegion macio;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
@@ -210,6 +213,12 @@ static void q800_init(MachineState *machine)
     memory_region_add_subregion(get_system_memory(), 0, machine->ram);
 
     /*
+     * Create container for all IO devices
+     */
+    memory_region_init(&m->macio, NULL, "mac-io", IO_SLICE);
+    memory_region_add_subregion(get_system_memory(), IO_BASE, &m->macio);
+
+    /*
      * Memory from IO_BASE to IO_BASE + IO_SLICE is repeated
      * from IO_BASE + IO_SLICE to IO_BASE + IO_SIZE
      */
@@ -239,7 +248,8 @@ static void q800_init(MachineState *machine)
     }
     qdev_init_nofail(via_dev);
     sysbus = SYS_BUS_DEVICE(via_dev);
-    sysbus_mmio_map(sysbus, 0, VIA_BASE);
+    memory_region_add_subregion(&m->macio, VIA_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 0));
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 0, pic[0]);
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 1, pic[1]);
 
@@ -280,8 +290,10 @@ static void q800_init(MachineState *machine)
                              "dma_mr", &error_abort);
     qdev_init_nofail(dev);
     sysbus = SYS_BUS_DEVICE(dev);
-    sysbus_mmio_map(sysbus, 0, SONIC_BASE);
-    sysbus_mmio_map(sysbus, 1, SONIC_PROM_BASE);
+    memory_region_add_subregion(&m->macio, SONIC_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 0));
+    memory_region_add_subregion(&m->macio, SONIC_PROM_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 1));
     sysbus_connect_irq(sysbus, 0, pic[2]);
 
     /* SCC */
@@ -299,7 +311,8 @@ static void q800_init(MachineState *machine)
     sysbus = SYS_BUS_DEVICE(dev);
     sysbus_connect_irq(sysbus, 0, pic[3]);
     sysbus_connect_irq(sysbus, 1, pic[3]);
-    sysbus_mmio_map(sysbus, 0, SCC_BASE);
+    memory_region_add_subregion(&m->macio, SCC_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 0));
 
     /* SCSI */
 
@@ -320,8 +333,11 @@ static void q800_init(MachineState *machine)
     sysbus_connect_irq(sysbus, 1,
                        qdev_get_gpio_in_named(via_dev, "via2-irq",
                                               VIA2_IRQ_SCSI_DATA_BIT));
-    sysbus_mmio_map(sysbus, 0, ESP_BASE);
-    sysbus_mmio_map(sysbus, 1, ESP_PDMA);
+
+    memory_region_add_subregion(&m->macio, ESP_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 0));
+    memory_region_add_subregion(&m->macio, ESP_PDMA_OFFSET,
+                                sysbus_mmio_get_region(sysbus, 1));
 
     scsi_bus_legacy_handle_cmdline(&esp->bus);
 
@@ -329,7 +345,8 @@ static void q800_init(MachineState *machine)
 
     dev = qdev_create(NULL, TYPE_SWIM);
     qdev_init_nofail(dev);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, SWIM_BASE);
+    memory_region_add_subregion(&m->macio, SWIM_OFFSET,
+                                sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0));
 
     /* NuBus */
 
@@ -376,7 +393,8 @@ static void q800_init(MachineState *machine)
                   (graphic_height << 16) | graphic_width);
         BOOTINFO1(cs->as, parameters_base, BI_MAC_VROW,
                   (graphic_width * graphic_depth + 7) / 8);
-        BOOTINFO1(cs->as, parameters_base, BI_MAC_SCCBASE, SCC_BASE);
+        BOOTINFO1(cs->as, parameters_base, BI_MAC_SCCBASE,
+                  IO_BASE + SCC_OFFSET);
 
         memory_region_init_ram_ptr(&m->rom, NULL, "m68k_fake_mac.rom",
                                    sizeof(fake_mac_rom), fake_mac_rom);
