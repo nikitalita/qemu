@@ -128,6 +128,8 @@ typedef struct Q800MachineState {
     M68kCPU *cpu;
     MemoryRegion rom;
     GLUEState glue;
+
+    MemoryRegion macio;
 } Q800MachineState;
 
 #define TYPE_Q800_MACHINE MACHINE_TYPE_NAME("q800")
@@ -208,6 +210,12 @@ static void q800_init(MachineState *machine)
 
     /* RAM */
     memory_region_add_subregion(get_system_memory(), 0, machine->ram);
+
+    /*
+     * Create container for all IO devices
+     */
+    memory_region_init(&m->macio, NULL, "mac-io", IO_SLICE);
+    memory_region_add_subregion(get_system_memory(), IO_BASE, &m->macio);
 
     /*
      * Memory from IO_BASE to IO_BASE + IO_SLICE is repeated
