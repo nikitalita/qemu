@@ -30,6 +30,7 @@ typedef struct ASCState {
     MemoryRegion asc;
     MemoryRegion mem_fifo;
     MemoryRegion mem_regs;
+    MemoryRegion mem_extregs;
     QEMUSoundCard card;
     SWVoiceOut *channel;
 
@@ -41,7 +42,8 @@ typedef struct ASCState {
 
     uint8_t *fifo;
 
-    uint8_t regs[48];
+    uint8_t regs[64];
+    uint8_t extregs[64];
 } ASCState;
 
 #define TYPE_ASC "apple-sound-chip"
