@@ -74,10 +74,17 @@
  *     0x82C: WAVETABLE 3 INCREMENT
  */
 
-#define ASC_LENGTH   0x2000
-#define ASC_FIFO_SIZE 0x0800
+#define ASC_SIZE           0x2000
 
-#define ASC_REG_BASE 0x0800
+#define ASC_FIFO_OFFSET    0x0
+#define ASC_FIFO_SIZE      0x800
+
+#define ASC_REG_OFFSET     0x800
+#define ASC_REG_SIZE       0x40
+
+#define ASC_EXTREG_OFFSET  0xf00
+#define ASC_EXTREG_SIZE    0x40
+
 enum {
     ASC_VERSION     = 0x00,
     ASC_MODE        = 0x01,
@@ -291,11 +298,6 @@ static uint64_t asc_read(void *opaque, hwaddr addr,
     ASCState *s = opaque;
     uint64_t prev, value;
 
-    if (addr >= 0x030) {
-        trace_asc_read_unknown(addr, size, 0);
-        return 0;
-    }
-
     switch (addr) {
     case ASC_VERSION:
         switch (s->type) {
@@ -367,10 +369,6 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
 {
     ASCState *s = opaque;
 
-    if (addr >= 0x30) {
-        trace_asc_write_unknown(addr, size, value);
-        return;
-    }
     switch (addr) {
     case ASC_MODE:
         value &= 3;
@@ -401,13 +399,45 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
     case ASC_WAVECTRL:
         break;
     }
+
     trace_asc_write_reg(addr, size, value);
     s->regs[addr] = value;
 }
 
-static const MemoryRegionOps asc_mmio_ops = {
+static const MemoryRegionOps asc_regs_ops = {
     .read = asc_read,
     .write = asc_write,
+    .impl = {
+        .min_access_size = 1,
+        .max_access_size = 1,
+    },
+    .endianness = DEVICE_BIG_ENDIAN,
+};
+
+static uint64_t asc_ext_read(void *opaque, hwaddr addr,
+                             unsigned size)
+{
+    ASCState *s = opaque;
+    uint64_t value;
+
+    value = s->extregs[addr];
+
+    trace_asc_read_extreg(addr, size, value);
+    return value;
+}
+
+static void asc_ext_write(void *opaque, hwaddr addr, uint64_t value,
+                          unsigned size)
+{
+    ASCState *s = opaque;
+
+    trace_asc_write_extreg(addr, size, value);
+    s->extregs[addr] = value;
+}
+
+static const MemoryRegionOps asc_extregs_ops = {
+    .read = asc_ext_read,
+    .write = asc_ext_write,
     .impl = {
         .min_access_size = 1,
         .max_access_size = 1,
@@ -462,6 +492,14 @@ static void asc_realize(DeviceState *dev, Error **errp)
                               s, asc_out_cb, &as);
 
     s->fifo = g_malloc0(ASC_FIFO_SIZE);
+
+    /* Add easc registers if required */
+    if (s->type == ASC_TYPE_EASC) {
+        memory_region_init_io(&s->mem_extregs, OBJECT(s), &asc_extregs_ops,
+                              s, "asc.extregs", ASC_EXTREG_OFFSET);
+        memory_region_add_subregion(&s->asc, ASC_EXTREG_OFFSET,
+                                    &s->mem_extregs);
+    }
 }
 
 static void asc_init(Object *obj)
@@ -469,13 +507,13 @@ static void asc_init(Object *obj)
     ASCState *s = ASC(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    memory_region_init(&s->asc, OBJECT(obj), "asc", ASC_LENGTH);
+    memory_region_init(&s->asc, OBJECT(obj), "asc", ASC_SIZE);
     memory_region_init_io(&s->mem_fifo, OBJECT(obj), &asc_fifo_ops, s, "asc.fifo",
                           ASC_FIFO_SIZE);
-    memory_region_add_subregion(&s->asc, 0, &s->mem_fifo);
-    memory_region_init_io(&s->mem_regs, OBJECT(obj), &asc_mmio_ops, s, "asc.regs",
-                          ASC_LENGTH - ASC_FIFO_SIZE);
-    memory_region_add_subregion(&s->asc, ASC_FIFO_SIZE, &s->mem_regs);
+    memory_region_add_subregion(&s->asc, ASC_FIFO_OFFSET, &s->mem_fifo);
+    memory_region_init_io(&s->mem_regs, OBJECT(obj), &asc_regs_ops, s, "asc.regs",
+                          ASC_REG_SIZE);
+    memory_region_add_subregion(&s->asc, ASC_REG_OFFSET, &s->mem_regs);
 
     sysbus_init_irq(sbd, &s->irq);
     sysbus_init_mmio(sbd, &s->asc);
