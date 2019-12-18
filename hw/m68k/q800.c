@@ -91,6 +91,9 @@
 
 #define MAC_CLOCK  3686418
 
+/* Size of whole RAM area */
+#define RAM_SIZE              0x40000000
+
 /*
  * The main Q800 machine
  */
@@ -100,6 +103,7 @@ typedef struct Q800MachineState {
 
     M68kCPU *cpu;
     MemoryRegion rom;
+    MemoryRegion ramio;
 
     MemoryRegion macio;
     MemoryRegion macio_alias;
@@ -208,6 +212,27 @@ static const MemoryRegionOps machine_id_ops = {
     },
 };
 
+static uint64_t ramio_read(void *opaque, hwaddr addr, unsigned size)
+{
+    return 0x0;
+}
+
+static void ramio_write(void *opaque, hwaddr addr, uint64_t val,
+                        unsigned size)
+{
+    return;
+}
+
+static const MemoryRegionOps ramio_ops = {
+    .read = ramio_read,
+    .write = ramio_write,
+    .endianness = DEVICE_BIG_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 4,
+    },
+};
+
 static void q800_init(MachineState *machine)
 {
     Q800MachineState *m = Q800_MACHINE(machine);
@@ -247,7 +272,11 @@ static void q800_init(MachineState *machine)
     qemu_register_reset(main_cpu_reset, m->cpu);
 
     /* RAM */
-    memory_region_add_subregion(get_system_memory(), 0, machine->ram);
+    memory_region_init_io(&m->ramio, NULL, &ramio_ops, &m->ramio,
+                          "ram", RAM_SIZE);
+    memory_region_add_subregion(get_system_memory(), 0x0, &m->ramio);
+
+    memory_region_add_subregion(&m->ramio, 0, machine->ram);
 
     /*
      * Create container for all IO devices
