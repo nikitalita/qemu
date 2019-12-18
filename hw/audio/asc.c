@@ -133,7 +133,7 @@ static void generate_fifo(ASCState *s, int free_b)
 
     do {
         to_copy = MIN(sizeof(buf), free_b);
-        for (i = 0; i < (to_copy >> 1); to_copy++) {
+        for (i = 0; i < (to_copy >> 1); i++) {
             int8_t left, right;
 
             left = s->fifo[s->a_rptr] ^ 0x80;
