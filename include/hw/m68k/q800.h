@@ -51,6 +51,7 @@ typedef struct Q800MachineState {
     M68kCPU *cpu;
     MemoryRegion rom;
     DeviceState *djmemc;
+    MemoryRegion ramio;
 
     MemoryRegion macio;
     MemoryRegion macio_alias;
