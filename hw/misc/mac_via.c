@@ -986,6 +986,7 @@ static void mos6522_q800_via1_portA_write(MOS6522State *s)
 
     if (m->rom_mr && !(s->a & VIA1A_vOverlay)) {
         memory_region_set_enabled(&m->rom_overlay, false);
+        trace_via1_rom_overlay_disable();
     }
 }
 
@@ -1017,6 +1018,7 @@ static void mos6522_q800_via1_reset(DeviceState *dev)
     if (m->rom_mr) {
         ms->a = VIA1A_vOverlay;
         memory_region_set_enabled(&m->rom_overlay, true);
+        trace_via1_rom_overlay_enable();
     }
     ms->b = VIA1B_vADB_StateMask | VIA1B_vADBInt | VIA1B_vRTCEnb;
 }
