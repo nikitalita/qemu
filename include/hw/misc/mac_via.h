@@ -85,6 +85,10 @@ typedef struct MacVIAState {
     MemoryRegion mmio;
     MemoryRegion via1mem;
     MemoryRegion via2mem;
+    MemoryRegion rom_overlay;
+
+    /* ROM */
+    MemoryRegion *rom_mr;
 
     /* VIAs */
     MOS6522Q800VIA1State mos6522_via1;

@@ -28,6 +28,8 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "trace.h"
+#include "exec/address-spaces.h"
+#include "hw/qdev-properties.h"
 
 /*
  * VIAs: There are two in every machine,
@@ -881,6 +883,16 @@ static void mac_via_realize(DeviceState *dev, Error **errp)
     m->adb_poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, via_adb_poll, m);
     m->adb_data_ready = qdev_get_gpio_in_named(dev, "via1-irq",
                                                VIA1_IRQ_ADB_READY_BIT);
+
+    /* ROM overlay */
+    if (m->rom_mr) {
+        memory_region_init_alias(&m->rom_overlay, NULL, "ROM overlay",
+                                 m->rom_mr, 0,
+                                 memory_region_size(m->rom_mr));
+        memory_region_add_subregion_overlap(get_system_memory(), 0,
+                                            &m->rom_overlay, 1);
+        memory_region_set_enabled(&m->rom_overlay, false);
+    }
 }
 
 static void mac_via_init(Object *obj)
@@ -941,6 +953,12 @@ static const VMStateDescription vmstate_mac_via = {
     }
 };
 
+static Property mac_via_properties[] = {
+    DEFINE_PROP_LINK("rom_mr", MacVIAState, rom_mr,
+                     TYPE_MEMORY_REGION, MemoryRegion *),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void mac_via_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -948,6 +966,7 @@ static void mac_via_class_init(ObjectClass *oc, void *data)
     dc->realize = mac_via_realize;
     dc->reset = mac_via_reset;
     dc->vmsd = &vmstate_mac_via;
+    dc->props = mac_via_properties;
 }
 
 static TypeInfo mac_via_info = {
@@ -959,6 +978,17 @@ static TypeInfo mac_via_info = {
 };
 
 /* VIA 1 */
+static void mos6522_q800_via1_portA_write(MOS6522State *s)
+{
+    MOS6522Q800VIA1State *v1s = container_of(s, MOS6522Q800VIA1State,
+                                             parent_obj);
+    MacVIAState *m = container_of(v1s, MacVIAState, mos6522_via1);
+
+    if (m->rom_mr && !(s->a & VIA1A_vOverlay)) {
+        memory_region_set_enabled(&m->rom_overlay, false);
+    }
+}
+
 static void mos6522_q800_via1_portB_write(MOS6522State *s)
 {
     MOS6522Q800VIA1State *v1s = container_of(s, MOS6522Q800VIA1State,
@@ -975,12 +1005,19 @@ static void mos6522_q800_via1_reset(DeviceState *dev)
 {
     MOS6522State *ms = MOS6522(dev);
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_GET_CLASS(ms);
+    MOS6522Q800VIA1State *v1s = container_of(ms, MOS6522Q800VIA1State,
+                                             parent_obj);
+    MacVIAState *m = container_of(v1s, MacVIAState, mos6522_via1);
 
     mdc->parent_reset(dev);
 
     ms->timers[0].frequency = VIA_TIMER_FREQ;
     ms->timers[1].frequency = VIA_TIMER_FREQ;
 
+    if (m->rom_mr) {
+        ms->a = VIA1A_vOverlay;
+        memory_region_set_enabled(&m->rom_overlay, true);
+    }
     ms->b = VIA1B_vADB_StateMask | VIA1B_vADBInt | VIA1B_vRTCEnb;
 }
 
@@ -996,6 +1033,7 @@ static void mos6522_q800_via1_class_init(ObjectClass *oc, void *data)
     MOS6522DeviceClass *mdc = MOS6522_DEVICE_CLASS(oc);
 
     dc->reset = mos6522_q800_via1_reset;
+    mdc->portA_write = mos6522_q800_via1_portA_write;
     mdc->portB_write = mos6522_q800_via1_portB_write;
 }
 
