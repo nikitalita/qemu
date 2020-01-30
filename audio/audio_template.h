@@ -153,6 +153,13 @@ static int glue (audio_pcm_sw_init_, TYPE) (
     sw->ratio = ((int64_t) sw->info.freq << 32) / sw->hw->info.freq;
 #endif
 
+#ifdef FLOAT_MIXENG
+#ifdef DAC
+    sw->conv = mixeng_conv_float;
+#else
+    sw->clip = mixeng_clip_float;
+#endif
+#else
 #ifdef DAC
     sw->conv = mixeng_conv
 #else
@@ -162,6 +169,7 @@ static int glue (audio_pcm_sw_init_, TYPE) (
         [sw->info.sign]
         [sw->info.swap_endianness]
         [audio_bits_to_index (sw->info.bits)];
+#endif
 
     sw->name = g_strdup (name);
     err = glue (audio_pcm_sw_alloc_resources_, TYPE) (sw);

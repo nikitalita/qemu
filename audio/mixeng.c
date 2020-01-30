@@ -267,6 +267,27 @@ f_sample *mixeng_clip[2][2][2][3] = {
     }
 };
 
+#ifdef FLOAT_MIXENG
+void mixeng_conv_float(struct st_sample *dst, const void *src, int samples)
+{
+    float *in = (float *) src;
+    while (samples--) {
+        dst->l = *in++;
+        dst->r = *in++;
+        dst++;
+    }
+}
+
+void mixeng_clip_float(void *dst, const struct st_sample *src, int samples)
+{
+    float *out = (float *) dst;
+    while (samples--) {
+        *out++ = src->l;
+        *out++ = src->r;
+        src++;
+    }
+}
+#endif
 
 void audio_sample_to_uint64(void *samples, int pos,
                             uint64_t *left, uint64_t *right)
