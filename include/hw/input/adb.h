@@ -49,6 +49,7 @@ struct ADBDevice {
 
     int devaddr;
     int handler;
+    qemu_irq srq;
 };
 
 #define ADB_DEVICE_CLASS(cls) \
@@ -81,6 +82,7 @@ struct ADBBusState {
     ADBDevice *devices[MAX_ADB_DEVICES];
     int nb_devices;
     int poll_index;
+    uint16_t srqs;
 
     uint8_t state;
 

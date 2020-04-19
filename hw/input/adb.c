@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/irq.h"
 #include "hw/input/adb.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
@@ -243,6 +244,25 @@ const VMStateDescription vmstate_adb_device = {
     }
 };
 
+static void adb_device_srq_handler(void *opaque, int n, int level)
+{
+    ADBDevice *d = ADB_DEVICE(opaque);
+    ADBBusState *adb_bus = ADB_BUS(qdev_get_parent_bus(DEVICE(d)));
+    uint8_t devaddr;
+
+    /* The current autopoll device cannot assert SRQ */
+    devaddr = (adb_bus->autopoll_cmd >> 4);
+    if (d->devaddr == devaddr) {
+        return;
+    }
+
+    if (level) {
+        adb_bus->srqs |= (1 << d->devaddr);
+    } else {
+        adb_bus->srqs &= ~(1 << d->devaddr);
+    }
+}
+
 static void adb_device_realizefn(DeviceState *dev, Error **errp)
 {
     ADBDevice *d = ADB_DEVICE(dev);
@@ -253,6 +273,15 @@ static void adb_device_realizefn(DeviceState *dev, Error **errp)
     }
 
     bus->devices[bus->nb_devices++] = d;
+
+    d->srq = qemu_allocate_irq(adb_device_srq_handler, d, 0);
+}
+
+static void adb_device_unrealizefn(DeviceState *dev, Error **errp)
+{
+    ADBDevice *d = ADB_DEVICE(dev);
+
+    qemu_free_irq(d->srq);
 }
 
 static void adb_device_class_init(ObjectClass *oc, void *data)
@@ -260,6 +289,7 @@ static void adb_device_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = adb_device_realizefn;
+    dc->unrealize = adb_device_unrealizefn;
     dc->bus_type = TYPE_ADB_BUS;
 }
 

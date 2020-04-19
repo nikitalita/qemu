@@ -28,6 +28,7 @@
 #include "qemu/module.h"
 #include "ui/input.h"
 #include "hw/input/adb-keys.h"
+#include "hw/irq.h"
 #include "adb-internal.h"
 #include "trace.h"
 
@@ -181,6 +182,7 @@ int qcode_to_adb_keycode[] = {
 static void adb_kbd_put_keycode(void *opaque, int keycode)
 {
     KBDState *s = opaque;
+    ADBDevice *d = ADB_DEVICE(s);
 
     if (s->count < sizeof(s->data)) {
         s->data[s->wptr] = keycode;
@@ -188,6 +190,7 @@ static void adb_kbd_put_keycode(void *opaque, int keycode)
             s->wptr = 0;
         }
         s->count++;
+        qemu_irq_raise(d->srq);
     }
 }
 
@@ -259,10 +262,12 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
             case ADB_CMD_CHANGE_ID:
             case ADB_CMD_CHANGE_ID_AND_ACT:
             case ADB_CMD_CHANGE_ID_AND_ENABLE:
+                qemu_irq_lower(d->srq);
                 d->devaddr = buf[1] & 0xf;
                 trace_adb_kbd_request_change_addr(d->devaddr);
                 break;
             default:
+                qemu_irq_lower(d->srq);
                 d->devaddr = buf[1] & 0xf;
                 /* we support handlers:
                  * 1: Apple Standard Keyboard
@@ -283,6 +288,9 @@ static int adb_kbd_request(ADBDevice *d, uint8_t *obuf,
         switch (reg) {
         case 0:
             olen = adb_kbd_poll(d, obuf);
+            if (olen) {
+                qemu_irq_lower(d->srq);
+            }
             break;
         case 1:
             break;

@@ -27,6 +27,7 @@
 #include "hw/input/adb.h"
 #include "migration/vmstate.h"
 #include "qemu/module.h"
+#include "hw/irq.h"
 #include "adb-internal.h"
 #include "trace.h"
 
@@ -58,11 +59,13 @@ static void adb_mouse_event(void *opaque,
                             int dx1, int dy1, int dz1, int buttons_state)
 {
     MouseState *s = opaque;
+    ADBDevice *d = ADB_DEVICE(s);
 
     s->dx += dx1;
     s->dy += dy1;
     s->dz += dz1;
     s->buttons_state = buttons_state;
+    qemu_irq_raise(d->srq);
 }
 
 
@@ -149,10 +152,12 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
             case ADB_CMD_CHANGE_ID:
             case ADB_CMD_CHANGE_ID_AND_ACT:
             case ADB_CMD_CHANGE_ID_AND_ENABLE:
+                qemu_irq_lower(d->srq);
                 d->devaddr = buf[1] & 0xf;
                 trace_adb_mouse_request_change_addr(d->devaddr);
                 break;
             default:
+                qemu_irq_lower(d->srq);
                 d->devaddr = buf[1] & 0xf;
                 /* we support handlers:
                  * 0x01: Classic Apple Mouse Protocol / 100 cpi operations
@@ -179,6 +184,9 @@ static int adb_mouse_request(ADBDevice *d, uint8_t *obuf,
         switch (reg) {
         case 0:
             olen = adb_mouse_poll(d, obuf);
+            if (olen) {
+                qemu_irq_lower(d->srq);
+            }
             break;
         case 1:
             break;
