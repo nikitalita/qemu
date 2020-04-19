@@ -630,8 +630,11 @@ static int adb_via_poll(MacVIAState *s, int state, uint8_t *data)
 
 static int adb_via_send(MacVIAState *s, int state, uint8_t data)
 {
+    ADBBusState *adb_bus = &s->adb_bus;
+
     switch (state) {
     case ADB_STATE_NEW:
+        adb_state_reset(adb_bus);
         s->adb_data_out_index = 0;
         break;
     case ADB_STATE_EVEN:

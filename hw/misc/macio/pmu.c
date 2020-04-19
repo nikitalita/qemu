@@ -185,6 +185,7 @@ static void pmu_cmd_adb(PMUState *s,
                         const uint8_t *in_data, uint8_t in_len,
                         uint8_t *out_data, uint8_t *out_len)
 {
+    ADBBusState *adb_bus = &s->adb_bus;
     int len, adblen;
     uint8_t adb_cmd[255];
 
@@ -234,6 +235,7 @@ static void pmu_cmd_adb(PMUState *s,
         len = -1;
     } else {
         /* Format command */
+        adb_state_reset(adb_bus);
         adb_cmd[0] = in_data[0];
         memcpy(&adb_cmd[1], &in_data[3], in_len - 3);
         len = adb_request(&s->adb_bus, s->adb_reply + 2, adb_cmd, in_len - 2);

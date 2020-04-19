@@ -41,7 +41,7 @@ static void adb_device_reset(ADBDevice *d)
 int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
 {
     ADBDevice *d;
-    int devaddr, cmd, i;
+    int devaddr, cmd, olen, i;
 
     cmd = buf[0] & 0xf;
     if (cmd == ADB_BUSRESET) {
@@ -49,16 +49,28 @@ int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
             d = s->devices[i];
             adb_device_reset(d);
         }
+        adb_state_reset(s);
         return 0;
     }
+
+    if ((cmd & 0xc) == 0xc) {
+        /* Store last TALK command for autopoll */
+        s->autopoll_cmd = buf[0];
+    }
+
     devaddr = buf[0] >> 4;
     for (i = 0; i < s->nb_devices; i++) {
         d = s->devices[i];
         if (d->devaddr == devaddr) {
             ADBDeviceClass *adc = ADB_DEVICE_GET_CLASS(d);
-            return adc->devreq(d, obuf, buf, len);
+            olen = adc->devreq(d, obuf, buf, len);
+            if (olen > 0) {
+                s->state = ADB_STATE_REPLY_NOPOLL;
+            }
+            return olen;
         }
     }
+    s->state = ADB_STATE_BUSTIMEOUT;
     return ADB_RET_NOTPRESENT;
 }
 
@@ -67,9 +79,15 @@ int adb_poll(ADBBusState *s, uint8_t *obuf, uint16_t poll_mask)
 {
     ADBDevice *d;
     int olen, i;
-    uint8_t buf[1];
+    uint8_t buf[1], tmp_cmd;
+
+    /* Autopoll only occurs when the bus is idle */
+    if (s->state != ADB_STATE_READY) {
+        return 0;
+    }
 
     olen = 0;
+    tmp_cmd = s->autopoll_cmd;
     for (i = 0; i < s->nb_devices; i++) {
         if (s->poll_index >= s->nb_devices) {
             s->poll_index = 0;
@@ -80,13 +98,17 @@ int adb_poll(ADBBusState *s, uint8_t *obuf, uint16_t poll_mask)
             olen = adb_request(s, obuf + 1, buf, 1);
             /* if there is data, we poll again the same device */
             if (olen > 0) {
+                s->state = ADB_STATE_REPLY_POLL;
                 obuf[0] = buf[0];
                 olen++;
-                break;
+                return olen;
             }
         }
         s->poll_index++;
     }
+
+    s->autopoll_cmd = tmp_cmd;
+    adb_state_reset(s);
     return olen;
 }
 
@@ -147,6 +169,11 @@ void adb_register_autopoll_callback(ADBBusState *s, void (*cb)(void *opaque),
     s->autopoll_cb_opaque = opaque;
 }
 
+void adb_state_reset(ADBBusState *s)
+{
+    s->state = ADB_STATE_READY;
+}
+
 static const VMStateDescription vmstate_adb_bus = {
     .name = "adb_bus",
     .version_id = 0,
@@ -156,6 +183,7 @@ static const VMStateDescription vmstate_adb_bus = {
         VMSTATE_BOOL(autopoll_enabled, ADBBusState),
         VMSTATE_UINT8(autopoll_rate_ms, ADBBusState),
         VMSTATE_UINT16(autopoll_mask, ADBBusState),
+        VMSTATE_UINT8(state, ADBBusState),
         VMSTATE_END_OF_LIST()
     }
 };
