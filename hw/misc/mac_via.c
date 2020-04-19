@@ -656,6 +656,7 @@ static void adb_via_send(MacVIAState *s, int state, uint8_t data)
     MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&s->mos6522_via1);
     MOS6522State *ms = MOS6522(v1s);
     ADBBusState *adb_bus = &s->adb_bus;
+    uint8_t mask;
 
     switch (state) {
     case ADB_STATE_NEW:
@@ -722,6 +723,10 @@ static void adb_via_send(MacVIAState *s, int state, uint8_t data)
                                           s->adb_data_out,
                                           s->adb_data_out_index);
         s->adb_data_in_index = 0;
+
+        /* Set autopoll mask to match last TALK command */
+        mask = (1 << (adb_bus->autopoll_cmd >> 4));
+        adb_set_autopoll_mask(adb_bus, mask);
     }
 }
 
@@ -783,8 +788,11 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
             if (s->adb_data_in_index < s->adb_data_in_size) {
                 *data = s->adb_data_in[s->adb_data_in_index++];
                 ms->b |= VIA1B_vADBInt;
-            } else {
+            } else if (s->adb_data_in_index == s->adb_data_in_size) {
                 *data = 0;
+                ms->b &= ~VIA1B_vADBInt;
+            } else {
+                *data = 0xff;
                 ms->b &= ~VIA1B_vADBInt;
             }
             break;
