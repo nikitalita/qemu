@@ -599,147 +599,210 @@ static void via1_rtc_update(MacVIAState *m)
     m->cmd = REG_EMPTY;
 }
 
-static int adb_via_poll(MacVIAState *s, int state, uint8_t *data)
+static void adb_via_poll(void *opaque)
 {
+    MacVIAState *m = opaque;
+    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&m->mos6522_via1);
+    MOS6522State *s = MOS6522(v1s);
+    ADBBusState *adb_bus = &m->adb_bus;
+    uint8_t obuf[9];
+    uint8_t *data = &s->sr;
+    int olen;
+
+    m->adb_data_in_index = 0;
+    m->adb_data_out_index = 0;
+    olen = adb_poll(adb_bus, obuf, adb_bus->autopoll_mask);
+
+    if (olen > 0) {
+        *data = obuf[0];
+        olen--;
+        memcpy(m->adb_data_in, &obuf[1], olen);
+        m->adb_data_in_size = olen;
+
+        s->b &= ~VIA1B_vADBInt;
+        qemu_irq_raise(m->adb_data_ready);
+    }
+}
+
+static int adb_via_send_len(uint8_t data)
+{
+    /* Determine the send length from the given ADB command */
+    uint8_t cmd = data & 0xc;
+    uint8_t reg = data & 0x3;
+
+    switch (cmd) {
+    case 0x8:
+        /* Listen command */
+        switch (reg) {
+        case 3:
+            /* Fortunately our devices only implement writes
+             * to register 3 which is fixed at 2 bytes */
+            return 3;
+        default:
+            qemu_log_mask(LOG_UNIMP, "ADB unknown length for register %d\n",
+                          reg);
+            return 1;
+        }
+    default:
+        /* Talk, BusReset */
+        return 1;
+    }
+}
+
+static int ecount = 0;
+
+static void adb_via_send(MacVIAState *s, int state, uint8_t data)
+{
+    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&s->mos6522_via1);
+    MOS6522State *ms = MOS6522(v1s);
     ADBBusState *adb_bus = &s->adb_bus;
 
-    if (state != ADB_STATE_IDLE) {
-        return 0;
-    }
+    switch (state) {
+    case ADB_STATE_NEW:
+        /* Command byte: vADBInt tells host autopoll data already present
+         * in VIA shift register and ADB transceiver */
+        if (adb_bus->state == ADB_STATE_REPLY_POLL) {
+            ms->b &= ~VIA1B_vADBInt;
+        } else {
+            adb_state_reset(adb_bus);
+            adb_bus->state = ADB_STATE_REQUEST;
 
-    if (s->adb_data_in_size < s->adb_data_in_index) {
-        return 0;
-    }
+            ms->b |= VIA1B_vADBInt;
+            s->adb_data_out_index = 0;
+            s->adb_data_out[s->adb_data_out_index++] = data;
+        }
 
-    if (s->adb_data_out_index != 0) {
-        return 0;
-    }
-
-    s->adb_data_in_index = 0;
-    s->adb_data_out_index = 0;
-    s->adb_data_in_size = adb_poll(adb_bus, s->adb_data_in,
-                                   adb_bus->autopoll_mask);
-
-    if (s->adb_data_in_size) {
-        *data = s->adb_data_in[s->adb_data_in_index++];
         qemu_irq_raise(s->adb_data_ready);
-    }
-
-    return s->adb_data_in_size;
-}
-
-static int adb_via_send(MacVIAState *s, int state, uint8_t data)
-{
-    ADBBusState *adb_bus = &s->adb_bus;
-
-    switch (state) {
-    case ADB_STATE_NEW:
-        adb_state_reset(adb_bus);
-        s->adb_data_out_index = 0;
         break;
-    case ADB_STATE_EVEN:
-        if ((s->adb_data_out_index & 1) == 0) {
-            return 0;
-        }
-        break;
-    case ADB_STATE_ODD:
-        if (s->adb_data_out_index & 1) {
-            return 0;
-        }
-        break;
-    case ADB_STATE_IDLE:
-        return 0;
-    }
-
-    assert(s->adb_data_out_index < sizeof(s->adb_data_out) - 1);
-
-    s->adb_data_out[s->adb_data_out_index++] = data;
-    qemu_irq_raise(s->adb_data_ready);
-    return 1;
-}
-
-static int adb_via_receive(MacVIAState *s, int state, uint8_t *data)
-{
-    switch (state) {
-    case ADB_STATE_NEW:
-        return 0;
 
     case ADB_STATE_EVEN:
-        if (s->adb_data_in_size <= 0) {
-            qemu_irq_raise(s->adb_data_ready);
-            return 0;
-        }
-
-        if (s->adb_data_in_index >= s->adb_data_in_size) {
-            *data = 0;
-            qemu_irq_raise(s->adb_data_ready);
-            return 1;
-        }
-
-        if ((s->adb_data_in_index & 1) == 0) {
-            return 0;
-        }
-
-        break;
-
     case ADB_STATE_ODD:
-        if (s->adb_data_in_size <= 0) {
-            qemu_irq_raise(s->adb_data_ready);
-            return 0;
+        switch (s->adb_data_out_index) {
+        case 1:
+            /* First EVEN byte: vADBInt indicates bus timeout */
+            if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+                ms->b &= ~VIA1B_vADBInt;
+            } else {
+                ms->b |= VIA1B_vADBInt;
+            }
+            break;
+
+        case 2:
+            /* First ODD byte: vADBInt indicates SRQ */
+            if (adb_bus->srqs) {
+                ms->b &= ~VIA1B_vADBInt;
+            } else {
+                ms->b |= VIA1B_vADBInt;
+            }
+            break;
+
+        default:
+            /* Otherwise no meaning, don't assert */
+            ms->b |= VIA1B_vADBInt;
+            break;
         }
 
-        if (s->adb_data_in_index >= s->adb_data_in_size) {
-            *data = 0;
-            qemu_irq_raise(s->adb_data_ready);
-            return 1;
-        }
-
-        if (s->adb_data_in_index & 1) {
-            return 0;
-        }
-
+        s->adb_data_out[s->adb_data_out_index++] = data;
+        qemu_irq_raise(s->adb_data_ready);
         break;
 
     case ADB_STATE_IDLE:
-        if (s->adb_data_out_index == 0) {
-            return 0;
-        }
+        return;
+    }
 
-        s->adb_data_in_size = adb_request(&s->adb_bus, s->adb_data_in,
+    /* If the command is complete, execute it */
+    if (s->adb_data_out_index == adb_via_send_len(s->adb_data_out[0])) {
+        fprintf(stderr, "E cmd send: %x   count: %d\n", s->adb_data_out[0], ecount);
+        if (ecount == 17) {
+           fprintf(stderr, "YEAH!\n");   
+        }
+        ecount++;
+
+        s->adb_data_in_size = adb_request(adb_bus, s->adb_data_in,
                                           s->adb_data_out,
                                           s->adb_data_out_index);
-        s->adb_data_out_index = 0;
         s->adb_data_in_index = 0;
-        if (s->adb_data_in_size < 0) {
-            *data = 0xff;
+    }
+}
+
+static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
+{
+    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&s->mos6522_via1);
+    MOS6522State *ms = MOS6522(v1s);
+    ADBBusState *adb_bus = &s->adb_bus;
+
+    switch (state) {
+    case ADB_STATE_NEW:
+        ms->b |= VIA1B_vADBInt;
+        return;
+
+    case ADB_STATE_IDLE:
+        if (s->adb_data_out_index > 0) {
+            /* Handle Linux switch to IDLE after ADB request */
+            s->adb_data_out_index = 0;
+            s->adb_data_in_index = 0;
+
+            *data = 0;
+            ms->b |= VIA1B_vADBInt;
             qemu_irq_raise(s->adb_data_ready);
-            return -1;
+            return;
+        } else {
+            *data = 0xff;
+            ms->b |= VIA1B_vADBInt;
+            adb_state_reset(adb_bus);
+            return;
+        }
+        break;
+
+    case ADB_STATE_EVEN:
+    case ADB_STATE_ODD:
+        switch (s->adb_data_in_index) {
+        case 0:
+            /* First EVEN byte: vADBInt indicates bus timeout */
+            if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+                *data = 0xff;
+                ms->b &= ~VIA1B_vADBInt;
+            } else {
+                *data = s->adb_data_in[s->adb_data_in_index++];
+                ms->b |= VIA1B_vADBInt;
+            }
+            break;
+
+        case 1:
+            /* First ODD byte: vADBInt indicates SRQ */
+            if (adb_bus->srqs) {
+                ms->b &= ~VIA1B_vADBInt;
+            } else {
+                ms->b |= VIA1B_vADBInt;
+            }
+            *data = s->adb_data_in[s->adb_data_in_index++];
+            break;
+
+        default:
+            /* Otherwise assert at end of data */
+            if (s->adb_data_in_index < s->adb_data_in_size) {
+                *data = s->adb_data_in[s->adb_data_in_index++];
+                ms->b |= VIA1B_vADBInt;
+            } else {
+                *data = 0;
+                ms->b &= ~VIA1B_vADBInt;
+            }
+            break;
         }
 
-        if (s->adb_data_in_size == 0) {
-            return 0;
-        }
-
+        qemu_irq_raise(s->adb_data_ready);
         break;
     }
-
-    assert(s->adb_data_in_index < sizeof(s->adb_data_in) - 1);
-
-    *data = s->adb_data_in[s->adb_data_in_index++];
-    qemu_irq_raise(s->adb_data_ready);
-    if (*data == 0xff || *data == 0) {
-        return 0;
-    }
-    return 1;
 }
 
 static void via1_adb_update(MacVIAState *m)
 {
     MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&m->mos6522_via1);
     MOS6522State *s = MOS6522(v1s);
-    int state;
-    int ret;
+    ADBBusState *adb_bus = &m->adb_bus;
+    int oldstate, state;
 
+    oldstate = (v1s->last_b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
     state = (s->b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
 
     /* MacOS temporarily changes VIA1B_vADBInt to an output as part of its
@@ -750,36 +813,20 @@ static void via1_adb_update(MacVIAState *m)
         s->b |= VIA1B_vADBInt;
     }
 
-    if (s->acr & VIA1ACR_vShiftOut) {
-        /* output mode */
-        ret = adb_via_send(m, state, s->sr);
-        if (ret > 0) {
-            s->b &= ~VIA1B_vADBInt;
-        } else {
-            s->b |= VIA1B_vADBInt;
+    if (state != oldstate) {
+        /* If moving away from ADB_STATE_IDLE then stop autopoll */
+        if (oldstate == ADB_STATE_IDLE) {
+            adb_set_autopoll_enabled(adb_bus, false);
+        } else if (state == ADB_STATE_IDLE) {
+            adb_set_autopoll_enabled(adb_bus, true);
         }
-    } else {
-        /* input mode */
-        ret = adb_via_receive(m, state, &s->sr);
-        if (ret > 0 && s->sr != 0xff) {
-            s->b &= ~VIA1B_vADBInt;
+
+        if (s->acr & VIA1ACR_vShiftOut) {
+            /* output mode */
+            adb_via_send(m, state, s->sr);
         } else {
-            s->b |= VIA1B_vADBInt;
-        }
-    }
-}
-
-static void via_adb_poll(void *opaque)
-{
-    MacVIAState *m = opaque;
-    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&m->mos6522_via1);
-    MOS6522State *s = MOS6522(v1s);
-    int state;
-
-    if (s->b & VIA1B_vADBInt) {
-        state = (s->b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
-        if (adb_via_poll(m, state, &s->sr)) {
-            s->b &= ~VIA1B_vADBInt;
+            /* input mode */
+            adb_via_receive(m, state, &s->sr);
         }
     }
 }
@@ -924,7 +971,7 @@ static void mac_via_realize(DeviceState *dev, Error **errp)
     qemu_get_timedate(&tm, 0);
     m->tick_offset = (uint32_t)mktimegm(&tm) + RTC_OFFSET;
 
-    adb_register_autopoll_callback(adb_bus, via_adb_poll, m);
+    adb_register_autopoll_callback(adb_bus, adb_via_poll, m);
     m->adb_data_ready = qdev_get_gpio_in_named(dev, "via1-irq",
                                                VIA1_IRQ_ADB_READY_BIT);
 
