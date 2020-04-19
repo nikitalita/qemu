@@ -67,6 +67,12 @@ typedef struct ADBDeviceClass {
 #define TYPE_ADB_BUS "apple-desktop-bus"
 #define ADB_BUS(obj) OBJECT_CHECK(ADBBusState, (obj), TYPE_ADB_BUS)
 
+#define ADB_STATE_READY        0
+#define ADB_STATE_REQUEST      1
+#define ADB_STATE_BUSTIMEOUT   2
+#define ADB_STATE_REPLY_NOPOLL 3
+#define ADB_STATE_REPLY_POLL   4
+
 struct ADBBusState {
     /*< private >*/
     BusState parent_obj;
@@ -76,7 +82,10 @@ struct ADBBusState {
     int nb_devices;
     int poll_index;
 
+    uint8_t state;
+
     QEMUTimer *autopoll_timer;
+    uint8_t autopoll_cmd;
     bool autopoll_enabled;
     uint8_t autopoll_rate_ms;
     uint16_t autopoll_mask;
@@ -93,6 +102,7 @@ void adb_set_autopoll_rate_ms(ADBBusState *s, int rate_ms);
 void adb_set_autopoll_mask(ADBBusState *s, uint16_t mask);
 void adb_register_autopoll_callback(ADBBusState *s, void (*cb)(void *opaque),
                                     void *opaque);
+void adb_state_reset(ADBBusState *s);
 
 #define TYPE_ADB_KEYBOARD "adb-keyboard"
 #define TYPE_ADB_MOUSE "adb-mouse"

@@ -410,6 +410,7 @@ static void cuda_receive_packet(CUDAState *s,
 static void cuda_receive_packet_from_host(CUDAState *s,
                                           const uint8_t *data, int len)
 {
+    ADBBusState *adb_bus = &s->adb_bus;
     int i;
 
     trace_cuda_packet_receive(len);
@@ -422,6 +423,7 @@ static void cuda_receive_packet_from_host(CUDAState *s,
         {
             uint8_t obuf[ADB_MAX_OUT_LEN + 3];
             int olen;
+            adb_state_reset(adb_bus);
             olen = adb_request(&s->adb_bus, obuf + 2, data + 1, len - 1);
             if (olen > 0) {
                 obuf[0] = ADB_PACKET;
