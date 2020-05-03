@@ -772,8 +772,8 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
 
         switch (s->adb_data_in_index) {
         case 0:
-            /* First EVEN byte: vADBInt indicates bus timeout */
             if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+                /* First EVEN byte: vADBInt indicates bus timeout */
                 *data = 0xff;
                 ms->b &= ~VIA1B_vADBInt;
                 s->adb_data_in_index++;
@@ -784,13 +784,19 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
             break;
 
         case 1:
-            /* First ODD byte: vADBInt indicates SRQ */
-            if (adb_bus->srqs) {
+            if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+                *data = 0xff;
                 ms->b &= ~VIA1B_vADBInt;
+                s->adb_data_in_index++;
             } else {
-                ms->b |= VIA1B_vADBInt;
+                /* First ODD byte: vADBInt indicates SRQ */
+                *data = s->adb_data_in[s->adb_data_in_index++];
+                if (adb_bus->srqs) {
+                    ms->b &= ~VIA1B_vADBInt;
+                } else {
+                    ms->b |= VIA1B_vADBInt;
+                }
             }
-            *data = s->adb_data_in[s->adb_data_in_index++];
             break;
 
         default:
