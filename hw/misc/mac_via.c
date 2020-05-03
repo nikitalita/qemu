@@ -609,6 +609,12 @@ static void adb_via_poll(void *opaque)
     uint8_t *data = &s->sr;
     int olen;
 
+
+    if (adb_bus->state != ADB_STATE_READY) {
+        fprintf(stderr, "skipping because state is %d\n", adb_bus->state);
+        return;
+    }
+
     m->adb_data_in_index = 0;
     m->adb_data_out_index = 0;
     olen = adb_poll(adb_bus, obuf, adb_bus->autopoll_mask);
@@ -618,6 +624,8 @@ static void adb_via_poll(void *opaque)
         olen--;
         memcpy(m->adb_data_in, &obuf[1], olen);
         m->adb_data_in_size = olen;
+
+        fprintf(stderr, "^^^^^ autopoll returned with length %d\n", olen);
 
         s->b &= ~VIA1B_vADBInt;
         qemu_irq_raise(m->adb_data_ready);
@@ -663,6 +671,7 @@ static void adb_via_send(MacVIAState *s, int state, uint8_t data)
          * in VIA shift register and ADB transceiver */
         if (adb_bus->state == ADB_STATE_REPLY_POLL) {
             ms->b &= ~VIA1B_vADBInt;
+            assert(false);
         } else {
             adb_state_reset(adb_bus);
             adb_bus->state = ADB_STATE_REQUEST;
@@ -680,20 +689,20 @@ static void adb_via_send(MacVIAState *s, int state, uint8_t data)
         switch (s->adb_data_out_index) {
         case 1:
             /* First EVEN byte: vADBInt indicates bus timeout */
-            if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
-                ms->b &= ~VIA1B_vADBInt;
-            } else {
+            //if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+            //    ms->b &= ~VIA1B_vADBInt;
+            //} else {
                 ms->b |= VIA1B_vADBInt;
-            }
+            //}
             break;
 
         case 2:
             /* First ODD byte: vADBInt indicates SRQ */
-            if (adb_bus->srqs) {
-                ms->b &= ~VIA1B_vADBInt;
-            } else {
+            //if (adb_bus->srqs) {
+            //    ms->b &= ~VIA1B_vADBInt;
+            //} else {
                 ms->b |= VIA1B_vADBInt;
-            }
+            //}
             break;
 
         default:
@@ -737,31 +746,34 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
         return;
 
     case ADB_STATE_IDLE:
-        if (s->adb_data_out_index > 0) {
-            /* Handle Linux switch to IDLE after ADB request */
-            s->adb_data_out_index = 0;
-            s->adb_data_in_index = 0;
+        fprintf(stderr, "### IDLE with state %d - size %d, index %d\n", adb_bus->state, s->adb_data_in_size, s->adb_data_in_index);
 
-            *data = 0;
-            ms->b |= VIA1B_vADBInt;
+        if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
+            *data = 0xff;
+            ms->b &= ~VIA1B_vADBInt;
             qemu_irq_raise(s->adb_data_ready);
             return;
-        } else {
-            *data = 0xff;
-            ms->b |= VIA1B_vADBInt;
+        } else if (s->adb_data_in_size > 0 && s->adb_data_in_index == 0) {
+            adb_bus->state = ADB_STATE_REPLY_POLL;
+            *data = adb_bus->autopoll_cmd;
+            ms->b &= ~VIA1B_vADBInt;
+            qemu_irq_raise(s->adb_data_ready);
+        } else if (s->adb_data_in_size == 0) {
             adb_state_reset(adb_bus);
-            return;
         }
         break;
 
     case ADB_STATE_EVEN:
     case ADB_STATE_ODD:
+        fprintf(stderr, "*** READING with index %d\n", s->adb_data_in_index);
+
         switch (s->adb_data_in_index) {
         case 0:
             /* First EVEN byte: vADBInt indicates bus timeout */
             if (adb_bus->state == ADB_STATE_BUSTIMEOUT) {
                 *data = 0xff;
                 ms->b &= ~VIA1B_vADBInt;
+                s->adb_data_in_index++;
             } else {
                 *data = s->adb_data_in[s->adb_data_in_index++];
                 ms->b |= VIA1B_vADBInt;
@@ -783,9 +795,14 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
             if (s->adb_data_in_index < s->adb_data_in_size) {
                 *data = s->adb_data_in[s->adb_data_in_index++];
                 ms->b |= VIA1B_vADBInt;
-            } else {
+            } else if (s->adb_data_in_index == s->adb_data_in_size) {
                 *data = 0;
+                s->adb_data_in_index++;
                 ms->b &= ~VIA1B_vADBInt;
+            } else {
+                *data = 0xff;
+                ms->b &= ~VIA1B_vADBInt;
+                adb_state_reset(adb_bus);
             }
             break;
         }
