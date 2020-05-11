@@ -27,6 +27,7 @@ typedef struct MacfbState {
     uint32_t vram_bit_mask;
     uint32_t palette_current;
     uint8_t color_palette[256 * 3];
+    uint8_t regs[0x400];
     uint32_t width, height; /* in pixels */
     uint8_t depth;
 } MacfbState;

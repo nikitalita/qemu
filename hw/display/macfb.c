@@ -290,7 +290,13 @@ static uint64_t macfb_ctrl_read(void *opaque,
                                 hwaddr addr,
                                 unsigned int size)
 {
+    MacfbState *s = opaque;
     uint64_t val = 0;
+    int i;
+
+    for (i = 0; i < size; i++) {
+        val |= s->regs[addr + i] << (24 - (i << 3));
+    }
 
     trace_macfb_ctrl_read(addr, val, size);
     return val;
@@ -302,8 +308,14 @@ static void macfb_ctrl_write(void *opaque,
                              unsigned int size)
 {
     MacfbState *s = opaque;
+    int i;
 
     switch (addr) {
+    case 0x0 ... DAFB_RESET - 1:
+        for (i = 0; i < size; i++) {
+           s->regs[addr + i] = val >> (24 - (i << 3)) & 0xff;
+        }
+        break;
     case DAFB_RESET:
         s->palette_current = 0;
         break;
