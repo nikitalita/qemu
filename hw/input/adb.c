@@ -161,6 +161,31 @@ void adb_set_autopoll_mask(ADBBusState *s, uint16_t mask)
     }
 }
 
+void adb_autopoll_block(ADBBusState *s)
+{
+    fprintf(stderr, "### START\n");
+
+    //assert(s->autopoll_blocked == false);
+    s->autopoll_blocked = true;
+
+    if (s->autopoll_enabled) {
+        timer_del(s->autopoll_timer);
+    }
+}
+
+void adb_autopoll_unblock(ADBBusState *s)
+{
+    fprintf(stderr, "### FINISH\n");
+
+    s->autopoll_blocked = false;
+
+    if (s->autopoll_enabled) {
+        timer_mod(s->autopoll_timer,
+                  qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) +
+                  s->autopoll_rate_ms);
+    }
+}
+
 static void adb_autopoll(void *opaque)
 {
     ADBBusState *s = opaque;
