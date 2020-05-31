@@ -85,6 +85,7 @@ struct ADBBusState {
     uint8_t status;
 
     QEMUTimer *autopoll_timer;
+    uint8_t autopoll_cmd;
     bool autopoll_enabled;
     uint8_t autopoll_rate_ms;
     uint16_t autopoll_mask;
