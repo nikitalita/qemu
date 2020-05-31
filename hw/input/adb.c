@@ -85,6 +85,11 @@ static int do_adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int
 
 int adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf, int len)
 {
+    /* Store last TALK command for autopoll */
+    if ((buf[0] & 0xc) == 0xc) {
+       s->autopoll_cmd = buf[0];
+    }
+
     return do_adb_request(s, obuf, buf, len);
 }
 
