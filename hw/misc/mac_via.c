@@ -608,6 +608,7 @@ static void adb_via_poll(void *opaque)
     uint8_t obuf[9];
     uint8_t *data = &s->sr;
     int olen;
+    uint16_t pending;
 
     /* Setting vADBInt below indicates that an autopoll reply has been
      * received, however we must block autopoll until the point where
@@ -619,6 +620,7 @@ static void adb_via_poll(void *opaque)
     olen = adb_poll(adb_bus, obuf, adb_bus->autopoll_mask);
 
     if (olen > 0) {
+        /* Autopoll response */
         *data = obuf[0];
         fprintf(stderr, "**** poll command is %x\n", *data);
         olen--;
@@ -630,10 +632,20 @@ static void adb_via_poll(void *opaque)
         s->b &= ~VIA1B_vADBInt;
         qemu_irq_raise(m->adb_data_ready);
     } else {
+        pending = adb_bus->pending & ~(1 << (adb_bus->autopoll_cmd >> 4));
+
         if (olen < 0) {
+            /* Bus timeout, device does not exist */
             *data = 0xff;
         } else {
+            /* Bus timeout, device exists but no data */
             *data = adb_bus->autopoll_cmd;
+
+            /* If pending data we need to block autopoll to let the OS read the entire
+             * response to get timeout and SRQ status first */
+            if (olen == 0 && !pending) {
+                adb_autopoll_unblock(adb_bus);
+            }
         }
         obuf[0] = 0xff;
         obuf[1] = 0xff;
@@ -644,7 +656,12 @@ static void adb_via_poll(void *opaque)
 
         fprintf(stderr, "NNNNNNOOOOOOOO DATA status is %x\n", adb_bus->status);
 
-        s->b |= VIA1B_vADBInt;
+        if (pending) {
+            s->b &= ~VIA1B_vADBInt;
+        } else {
+            s->b |= VIA1B_vADBInt;
+        }
+
         qemu_irq_raise(m->adb_data_ready);
     }
 }
