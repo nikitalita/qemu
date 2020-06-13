@@ -864,6 +864,16 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
     oldstate = (v1s->last_b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
     state = (s->b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
 
+    /*
+     * MacOS temporarily changes VIA1B_vADBInt to an output as part of its
+     * internal startup tests. In this case make sure that the output is
+     * pulled high to avoid a hang caused by VIA1B_vADBInt appearing to be
+     * continuously asserted
+     */
+    if (s->dirb & VIA1B_vADBInt) {
+        s->b |= VIA1B_vADBInt;
+    }
+
     if (state != oldstate) {
         if (s->acr & VIA1ACR_vShiftOut) {
             /* output mode */
