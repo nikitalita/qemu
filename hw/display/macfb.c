@@ -298,6 +298,15 @@ static uint64_t macfb_ctrl_read(void *opaque,
         val |= s->regs[addr + i] << (24 - (i << 3));
     }
 
+    switch (addr) {
+    case 0x108:
+        // During early video init MacOS sits in a busy loop waiting
+        // for this bit to be set. Some kind of interrupt? Is this related
+        // to VIA VBL?
+        val |= 0x4;
+        break;
+    }
+
     trace_macfb_ctrl_read(addr, val, size);
     return val;
 }
