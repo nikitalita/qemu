@@ -347,6 +347,26 @@ static const MemoryRegionOps macfb_ctrl_ops = {
     .impl.max_access_size = 4,
 };
 
+static uint64_t macfb_nubus_read(void *opaque, hwaddr addr, unsigned int size)
+{
+    trace_macfb_nubus_read(addr, size);
+    return 0;
+}
+
+static void macfb_nubus_write(void *opaque, hwaddr addr, uint64_t val,
+                              unsigned int size)
+{
+    trace_macfb_nubus_write(addr, val, size);
+}
+
+static const MemoryRegionOps macfb_nubus_ops = {
+    .read = macfb_nubus_read,
+    .write = macfb_nubus_write,
+    .endianness = DEVICE_BIG_ENDIAN,
+    .impl.min_access_size = 1,
+    .impl.max_access_size = 1,
+};
+
 static int macfb_post_load(void *opaque, int version_id)
 {
     macfb_invalidate_display(opaque);
@@ -424,9 +444,14 @@ static void macfb_nubus_realize(DeviceState *dev, Error **errp)
 
     ndc->parent_realize(dev, errp);
 
+    memory_region_init_io(&ms->macfb, OBJECT(dev), &macfb_nubus_ops, s,
+                          "macfb", 0x01000000);
+    memory_region_add_subregion(&nd->slot_mem, 0, &ms->macfb);    
+
     macfb_common_realize(dev, ms, errp);
-    memory_region_add_subregion(&nd->slot_mem, DAFB_BASE, &ms->mem_ctrl);
-    memory_region_add_subregion(&nd->slot_mem, VIDEO_BASE, &ms->mem_vram);
+    
+    memory_region_add_subregion(&ms->macfb, DAFB_BASE, &ms->mem_ctrl);
+    memory_region_add_subregion(&ms->macfb, VIDEO_BASE, &ms->mem_vram);
 
     nubus_register_rom(nd, macfb_rom, sizeof(macfb_rom), 1, 9, 0xf);
 }
