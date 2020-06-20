@@ -18,6 +18,7 @@
 #include "ui/console.h"
 
 typedef struct MacfbState {
+    MemoryRegion macfb;
     MemoryRegion mem_vram;
     MemoryRegion mem_ctrl;
     QemuConsole *con;
