@@ -1434,6 +1434,7 @@ if have_system
     'hw/misc',
     'hw/misc/macio',
     'hw/net',
+    'hw/nubus',
     'hw/nvram',
     'hw/pci',
     'hw/pci-host',
