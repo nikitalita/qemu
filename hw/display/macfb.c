@@ -431,10 +431,6 @@ static void macfb_sysbus_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &ms->mem_vram);
 }
 
-const uint8_t macfb_rom[] = {
-    255, 0, 0, 0,
-};
-
 static void macfb_nubus_realize(DeviceState *dev, Error **errp)
 {
     NubusDevice *nd = NUBUS_DEVICE(dev);
@@ -449,11 +445,9 @@ static void macfb_nubus_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&nd->slot_mem, 0, &ms->macfb);    
 
     macfb_common_realize(dev, ms, errp);
-    
+
     memory_region_add_subregion(&ms->macfb, DAFB_BASE, &ms->mem_ctrl);
     memory_region_add_subregion(&ms->macfb, VIDEO_BASE, &ms->mem_vram);
-
-    nubus_register_rom(nd, macfb_rom, sizeof(macfb_rom), 1, 9, 0xf);
 }
 
 static void macfb_sysbus_reset(DeviceState *d)
