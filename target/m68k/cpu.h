@@ -507,6 +507,7 @@ enum m68k_features {
     M68K_FEATURE_RTD,
     M68K_FEATURE_CHK2,
     M68K_FEATURE_MOVEP,
+    M68K_FEATURE_WORD_ALIGN, /* SP (and mem access) must be word-aligned */
 };
 
 static inline int m68k_feature(CPUM68KState *env, int feature)
