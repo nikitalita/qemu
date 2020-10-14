@@ -112,6 +112,7 @@ static void m68000_cpu_initfn(Object *obj)
     m68k_set_feature(env, M68K_FEATURE_USP);
     m68k_set_feature(env, M68K_FEATURE_WORD_INDEX);
     m68k_set_feature(env, M68K_FEATURE_MOVEP);
+    m68k_set_feature(env, M68K_FEATURE_WORD_ALIGN);
 }
 
 /* common features for 68020, 68030 and 68040 */
