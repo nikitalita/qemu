@@ -383,9 +383,10 @@ static void sabre_realize(DeviceState *dev, Error **errp)
     pci_create_simple(phb->bus, 0, TYPE_SABRE_PCI_DEVICE);
 
     /* IOMMU */
+    sysbus_realize(SYS_BUS_DEVICE(&s->iommu), &error_fatal);
     memory_region_add_subregion_overlap(&s->sabre_config, 0x200,
-                    sysbus_mmio_get_region(SYS_BUS_DEVICE(s->iommu), 0), 1);
-    pci_setup_iommu(phb->bus, sabre_pci_dma_iommu, s->iommu);
+                    sysbus_mmio_get_region(SYS_BUS_DEVICE(&s->iommu), 0), 1);
+    pci_setup_iommu(phb->bus, sabre_pci_dma_iommu, &s->iommu);
 
     /* APB secondary busses */
     pci_dev = pci_new_multifunction(PCI_DEVFN(1, 0), true,
@@ -422,10 +423,7 @@ static void sabre_init(Object *obj)
     s->pci_irq_in = 0ULL;
 
     /* IOMMU */
-    object_property_add_link(obj, "iommu", TYPE_SUN4U_IOMMU,
-                             (Object **) &s->iommu,
-                             qdev_prop_allow_set_link_before_realize,
-                             0);
+    object_initialize_child(obj, "iommu", &s->iommu, TYPE_SUN4U_IOMMU);
 
     /* sabre_config */
     memory_region_init_io(&s->sabre_config, OBJECT(s), &sabre_config_ops, s,

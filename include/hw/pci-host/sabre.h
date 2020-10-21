@@ -34,7 +34,7 @@ struct SabreState {
     MemoryRegion pci_mmio;
     MemoryRegion pci_ioport;
     uint64_t pci_irq_in;
-    IOMMUState *iommu;
+    IOMMUState iommu;
     PCIBridge *bridgeA;
     PCIBridge *bridgeB;
     uint32_t pci_control[16];
