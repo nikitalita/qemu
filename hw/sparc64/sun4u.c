@@ -562,7 +562,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     PCIBus *pci_bus, *pci_busA, *pci_busB;
     PCIDevice *ebus, *pci_dev;
     SysBusDevice *s;
-    DeviceState *iommu, *dev;
+    DeviceState *dev;
     FWCfgState *fw_cfg;
     NICInfo *nd;
     MACAddr macaddr;
@@ -570,10 +570,6 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
 
     /* init CPUs */
     cpu = sparc64_cpu_devinit(machine->cpu_type, hwdef->prom_addr);
-
-    /* IOMMU */
-    iommu = qdev_new(TYPE_SUN4U_IOMMU);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(iommu), &error_fatal);
 
     /* set up devices */
     ram_init(0, machine->ram_size);
@@ -584,8 +580,6 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     sabre = SABRE(qdev_new(TYPE_SABRE));
     qdev_prop_set_uint64(DEVICE(sabre), "special-base", PBM_SPECIAL_BASE);
     qdev_prop_set_uint64(DEVICE(sabre), "mem-base", PBM_MEM_BASE);
-    object_property_set_link(OBJECT(sabre), "iommu", OBJECT(iommu),
-                             &error_abort);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(sabre), &error_fatal);
 
     /* sabre_config */
