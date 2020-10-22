@@ -795,7 +795,6 @@ static void adb_via_receive(MacVIAState *s, int state, uint8_t *data)
             if (adb_bus->status & ADB_STATUS_BUSTIMEOUT) {
                 *data = 0xff;
                 ms->b |= VIA1B_vADBInt;
-                qemu_irq_raise(s->adb_data_ready);
             } else if (s->adb_data_in_size > 0) {
                 adb_bus->status = ADB_STATUS_POLLREPLY;
                 *data = s->adb_autopoll_cmd;
