@@ -964,6 +964,16 @@ static void mos6522_q800_via1_write(void *opaque, hwaddr addr, uint64_t val,
     MOS6522State *ms = MOS6522(v1s);
 
     addr = (addr >> 9) & 0xf;
+
+    /* FIXME: fudge TimeDBRA calibration in SETUPTIMEK so that 0xd00
+     * is non-zero. Detect VIA_REG_T2CL == 0xc and VIA_REG_T2CH == 0x3
+     * equivalent to 780 (1ms) and tweak values to ensure the result of
+     * the calculation doesn't return zero */
+    if (addr == VIA_REG_T2CH && val == 0x3) {
+        mos6522_write(ms, VIA_REG_T2CL, 0x8, 1);
+        val = 0;
+    }
+
     mos6522_write(ms, addr, val, size);
 
     switch (addr) {
