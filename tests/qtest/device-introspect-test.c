@@ -318,11 +318,13 @@ int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
 
+    if (0) {
     qtest_add_func("device/introspect/list", test_device_intro_list);
     qtest_add_func("device/introspect/list-fields", test_qom_list_fields);
     qtest_add_func("device/introspect/none", test_device_intro_none);
     qtest_add_func("device/introspect/abstract", test_device_intro_abstract);
     qtest_add_func("device/introspect/abstract-interfaces", test_abstract_interfaces);
+    }
     if (g_test_quick()) {
         qtest_add_data_func("device/introspect/concrete/defaults/none",
                             g_strdup(common_args), test_device_intro_concrete);

@@ -444,6 +444,11 @@ static void sabre_init(Object *obj)
     sysbus_init_mmio(sbd, &s->pci_ioport);
 }
 
+static void sabre_finalize(Object *obj)
+{
+    fprintf(stderr, "### I'm finalizing - are you?\n");
+}
+
 static void sabre_pci_realize(PCIDevice *d, Error **errp)
 {
     pci_set_word(d->config + PCI_COMMAND,
@@ -513,6 +518,7 @@ static const TypeInfo sabre_info = {
     .parent        = TYPE_PCI_HOST_BRIDGE,
     .instance_size = sizeof(SabreState),
     .instance_init = sabre_init,
+    .instance_finalize = sabre_finalize,
     .class_init    = sabre_class_init,
 };
 

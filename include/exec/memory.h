@@ -2051,6 +2051,8 @@ void address_space_init(AddressSpace *as, MemoryRegion *root, const char *name);
  */
 void address_space_destroy(AddressSpace *as);
 
+int address_space_count(void);
+
 /**
  * address_space_remove_listeners: unregister all listeners of an address space
  *

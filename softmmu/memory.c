@@ -2811,6 +2811,18 @@ void address_space_destroy(AddressSpace *as)
     call_rcu(as, do_address_space_destroy, rcu);
 }
 
+int address_space_count(void)
+{
+    AddressSpace *as = NULL;
+    int i = 0;
+
+    QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
+        i++;
+    }
+
+    return i;
+}
+
 static const char *memory_region_type(MemoryRegion *mr)
 {
     if (mr->alias) {

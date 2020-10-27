@@ -284,6 +284,8 @@ static void raven_pcihost_initfn(Object *obj)
     memory_region_init(&s->pci_memory, obj, "pci-memory", 0x3f000000);
     address_space_init(&s->pci_io_as, &s->pci_io, "raven-io");
 
+    fprintf(stderr, "### raven init address_space_count %d\n", address_space_count());
+
     /* CPU address space */
     memory_region_add_subregion(address_space_mem, 0x80000000, &s->pci_io);
     memory_region_add_subregion_overlap(address_space_mem, 0x80000000,

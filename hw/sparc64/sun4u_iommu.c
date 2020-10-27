@@ -295,14 +295,22 @@ static void iommu_init(Object *obj)
     IOMMUState *s = SUN4U_IOMMU(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
+    fprintf(stderr, "**** IOMMU INIT!\n");
     memory_region_init_iommu(&s->iommu, sizeof(s->iommu),
                              TYPE_SUN4U_IOMMU_MEMORY_REGION, OBJECT(s),
                              "iommu-sun4u", UINT64_MAX);
     address_space_init(&s->iommu_as, MEMORY_REGION(&s->iommu), "iommu-as");
 
+    fprintf(stderr, "**** IOMMU count is %d\n", address_space_count());
+
     memory_region_init_io(&s->iomem, obj, &iommu_mem_ops, s, "iommu",
                           IOMMU_NREGS * sizeof(uint64_t));
     sysbus_init_mmio(sbd, &s->iomem);
+}
+
+static void iommu_finalize(Object *obj)
+{
+    fprintf(stderr, "**** FINALIZING IOMMU!\n");
 }
 
 static void iommu_class_init(ObjectClass *klass, void *data)
@@ -317,6 +325,7 @@ static const TypeInfo iommu_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(IOMMUState),
     .instance_init = iommu_init,
+    .instance_finalize = iommu_finalize,
     .class_init    = iommu_class_init,
 };
 
