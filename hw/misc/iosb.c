@@ -10,13 +10,13 @@
 
 #define IOSB_SIZE       0x2000
 
-#define Config     0
-#define Config2    1
-#define Sonic_SCSI 2
-#define Revision   3
-#define SCSI_ResID 4
-#define Brightness 5
-#define Timeout    6
+#define IOSB_CONFIG     0
+#define IOSB_CONFIG2    1
+#define IOSB_SONIC_SCSI 2
+#define IOSB_REVISION   3
+#define IOSB_SCSI_RESID 4
+#define IOSB_BRIGHTNESS 5
+#define IOSB_TIMEOUT    6
 
 static const VMStateDescription vmstate_IOSB = {
     .name = "IOSB",
@@ -30,26 +30,25 @@ static const VMStateDescription vmstate_IOSB = {
 static uint64_t IOSB_read(void *opaque, hwaddr addr,
                           unsigned size)
 {
-    /* IOSBState *s = opaque; */
-    uint64_t value = 0;
+    IOSBState *s = IOSB(opaque);
+    uint64_t val = 0;
 
-    switch (addr >> 8) {
-    case Config:
-        value = 1; /* BCLK 33 MHz */
-        break;
-    default:
-        break;
-    }
-    trace_IOSB_read((int)(addr >> 8), size, value);
+    addr >>= 8;
+    val = s->regs[addr];
 
-    return value;
+    trace_IOSB_read(addr, size, val);
+    return val;
 }
 
-static void IOSB_write(void *opaque, hwaddr addr, uint64_t value,
+static void IOSB_write(void *opaque, hwaddr addr, uint64_t val,
                        unsigned size)
 {
-    /* IOSBState *s = opaque; */
-    trace_IOSB_write((int)(addr >> 8), size, value);
+    IOSBState *s = IOSB(opaque);
+
+    addr >>= 8;
+    s->regs[addr] = val;
+
+    trace_IOSB_write(addr, size, val);
 }
 
 static const MemoryRegionOps IOSB_mmio_ops = {
@@ -74,7 +73,9 @@ static void IOSB_init(Object *obj)
 
 static void IOSB_reset(DeviceState *d)
 {
-    /* IOSBState *s = IOSB(d); */
+    IOSBState *s = IOSB(d);
+
+    s->regs[IOSB_CONFIG] = 1; /* BCLK 33 MHz */
 }
 
 static void IOSB_class_init(ObjectClass *oc, void *data)
