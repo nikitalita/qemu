@@ -10,6 +10,7 @@ typedef struct IOSBState {
     SysBusDevice parent_obj;
 
     MemoryRegion mem_regs;
+    uint32_t regs[6];
 } IOSBState;
 
 #define TYPE_IOSB "IOSB"
