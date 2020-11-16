@@ -110,8 +110,6 @@ static void set_pdma(ESPState *s, enum pdma_origin_id origin,
 static uint8_t *get_pdma_buf(ESPState *s)
 {
     switch (s->pdma_origin) {
-    case PDMA:
-        return s->pdma_buf;
     case TI:
         return s->ti_buf;
     case CMD:
@@ -125,8 +123,6 @@ static uint8_t *get_pdma_buf(ESPState *s)
 static uint8_t esp_pdma_read(ESPState *s)
 {
     switch (s->pdma_origin) {
-    case PDMA:
-        return s->pdma_buf[s->pdma_cur++];
     case TI:
         return s->ti_buf[s->pdma_cur++];
     case CMD:
@@ -141,9 +137,6 @@ static uint8_t esp_pdma_read(ESPState *s)
 static void esp_pdma_write(ESPState *s, uint8_t val)
 {
     switch (s->pdma_origin) {
-    case PDMA:
-        s->pdma_buf[s->pdma_cur++] = val;
-        break;
     case TI:
         s->ti_buf[s->pdma_cur++] = val;
         break;
@@ -202,8 +195,8 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, buf, dmalen);
         } else {
-            memcpy(s->pdma_buf, buf, dmalen);
-            set_pdma(s, PDMA, 0, dmalen);
+            memcpy(s->ti_buf, buf, dmalen);
+            set_pdma(s, TI, 0, dmalen);
             esp_raise_drq(s);
             return 0;
         }

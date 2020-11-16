@@ -16,7 +16,6 @@ typedef void (*ESPDMAMemoryReadWriteFunc)(void *opaque, uint8_t *buf, int len);
 typedef struct ESPState ESPState;
 
 enum pdma_origin_id {
-    PDMA,
     TI,
     CMD,
     ASYNC,
