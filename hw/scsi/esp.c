@@ -195,7 +195,6 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, buf, dmalen);
         } else {
-            memcpy(s->ti_buf, buf, dmalen);
             set_pdma(s, TI, 0, dmalen);
             esp_raise_drq(s);
             return 0;
