@@ -42,6 +42,8 @@
  * On Macintosh Quadra it is a NCR53C96.
  */
 
+static int xfcount = 0;
+
 static void esp_raise_irq(ESPState *s)
 {
     if (!(s->rregs[ESP_RSTAT] & STAT_INT)) {
@@ -537,6 +539,8 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
 {
     ESPState *s = req->hba_private;
 
+    fprintf(stderr, ">> XFC%d\n", xfcount++);
+
     assert(!s->do_cmd);
     trace_esp_transfer_data(s->dma_left, s->ti_size);
     s->async_len = len;
@@ -879,14 +883,19 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     ESPState *s = &sysbus->esp;
     uint32_t dmalen;
 
-    trace_esp_pdma_write(size);
-
     dmalen = s->rregs[ESP_TCLO];
     dmalen |= s->rregs[ESP_TCMID] << 8;
     dmalen |= s->rregs[ESP_TCHI] << 16;
     if (dmalen == 0 || s->pdma_len == 0) {
         return;
     }
+    
+    trace_esp_pdma_write(size, dmalen, s->pdma_len);
+
+    if (dmalen != s->pdma_len) {
+        fprintf(stderr, "#### pdma_write mismatch!\n");
+    }
+
     switch (size) {
     case 1:
         esp_pdma_write(s, val);
@@ -916,24 +925,46 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     SysBusESPState *sysbus = opaque;
     ESPState *s = &sysbus->esp;
     uint64_t val = 0;
+    uint32_t dmalen;
 
-    trace_esp_pdma_read(size);
+    dmalen = s->rregs[ESP_TCLO];
+    dmalen |= s->rregs[ESP_TCMID] << 8;
+    dmalen |= s->rregs[ESP_TCHI] << 16;
 
+    trace_esp_pdma_read(size, dmalen, s->pdma_len);
+    
     if (s->pdma_len == 0) {
         return 0;
     }
+    
+    if (dmalen != s->pdma_len) {
+        fprintf(stderr, "#### pdma_read mismatch!\n");
+    }
+
     switch (size) {
     case 1:
         val = esp_pdma_read(s);
-        s->pdma_len--;
+        // FIXME
+        if (s->pdma_len > 0) {
+            s->pdma_len--;
+        }
+        dmalen--;
         break;
     case 2:
         val = esp_pdma_read(s);
         val = (val << 8) | esp_pdma_read(s);
-        s->pdma_len -= 2;
+        // FIXME
+        if (s->pdma_len > 0) {
+            s->pdma_len -= 2;
+        }
+        dmalen -= 2;
         break;
     }
 
+    s->rregs[ESP_TCLO] = dmalen & 0xff;
+    s->rregs[ESP_TCMID] = dmalen >> 8;
+    s->rregs[ESP_TCHI] = dmalen >> 16;
+    //if (dmalen == 0 && s->pdma_cb) {
     if (s->pdma_len == 0 && s->pdma_cb) {
         esp_lower_drq(s);
         s->pdma_cb(s);
