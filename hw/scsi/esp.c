@@ -157,10 +157,6 @@ static int get_cmd_cb(ESPState *s)
 
     target = s->wregs[ESP_WBUSID] & BUSID_DID;
 
-    s->ti_size = 0;
-    s->ti_rptr = 0;
-    s->ti_wptr = 0;
-
     if (s->current_req) {
         /* Started a new command before the old one finished.  Cancel it.  */
         scsi_req_cancel(s->current_req);
@@ -212,6 +208,11 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
     if (get_cmd_cb(s) < 0) {
         return 0;
     }
+
+    s->ti_size = 0;
+    s->ti_rptr = 0;
+    s->ti_wptr = 0;
+
     return dmalen;
 }
 
