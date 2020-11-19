@@ -153,6 +153,24 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
     }
 }
 
+static uint32_t esp_get_tc(ESPState *s)
+{
+    uint32_t dmalen;
+
+    dmalen = s->rregs[ESP_TCLO];
+    dmalen |= s->rregs[ESP_TCMID] << 8;
+    dmalen |= s->rregs[ESP_TCHI] << 16;
+
+    return dmalen;
+}
+
+static void esp_set_tc(ESPState *s, uint32_t dmalen)
+{
+    s->rregs[ESP_TCLO] = dmalen & 0xff;
+    s->rregs[ESP_TCMID] = dmalen >> 8;
+    s->rregs[ESP_TCHI] = dmalen >> 16;
+}
+
 static int get_cmd_cb(ESPState *s)
 {
     int target;
@@ -184,9 +202,7 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
 
     target = s->wregs[ESP_WBUSID] & BUSID_DID;
     if (s->dma) {
-        dmalen = s->rregs[ESP_TCLO];
-        dmalen |= s->rregs[ESP_TCMID] << 8;
-        dmalen |= s->rregs[ESP_TCHI] << 16;
+        dmalen = esp_get_tc(s);
         if (dmalen > buflen) {
             return 0;
         }
@@ -378,9 +394,7 @@ static void esp_dma_done(ESPState *s)
     s->rregs[ESP_RINTR] = INTR_BS;
     s->rregs[ESP_RSEQ] = 0;
     s->rregs[ESP_RFLAGS] = 0;
-    s->rregs[ESP_TCLO] = 0;
-    s->rregs[ESP_TCMID] = 0;
-    s->rregs[ESP_TCHI] = 0;
+    esp_set_tc(s, 0);
     esp_raise_irq(s);
 }
 
@@ -563,11 +577,9 @@ static void handle_ti(ESPState *s)
         return;
     }
 
-    dmalen = s->rregs[ESP_TCLO];
-    dmalen |= s->rregs[ESP_TCMID] << 8;
-    dmalen |= s->rregs[ESP_TCHI] << 16;
-    if (dmalen==0) {
-      dmalen=0x10000;
+    dmalen = esp_get_tc(s);
+    if (dmalen == 0) {
+        dmalen = 0x10000;
     }
     s->dma_counter = dmalen;
 
@@ -883,9 +895,7 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     ESPState *s = &sysbus->esp;
     uint32_t dmalen;
 
-    dmalen = s->rregs[ESP_TCLO];
-    dmalen |= s->rregs[ESP_TCMID] << 8;
-    dmalen |= s->rregs[ESP_TCHI] << 16;
+    dmalen = esp_get_tc(s);
     if (dmalen == 0 || s->pdma_len == 0) {
         return;
     }
@@ -909,9 +919,9 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
         dmalen -= 2;
         break;
     }
-    s->rregs[ESP_TCLO] = dmalen & 0xff;
-    s->rregs[ESP_TCMID] = dmalen >> 8;
-    s->rregs[ESP_TCHI] = dmalen >> 16;
+
+    esp_set_tc(s, dmalen);
+
     if (s->pdma_len == 0 && s->pdma_cb) {
         esp_lower_drq(s);
         s->pdma_cb(s);
@@ -927,9 +937,7 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     uint64_t val = 0;
     uint32_t dmalen;
 
-    dmalen = s->rregs[ESP_TCLO];
-    dmalen |= s->rregs[ESP_TCMID] << 8;
-    dmalen |= s->rregs[ESP_TCHI] << 16;
+    dmalen = esp_get_tc(s);
 
     trace_esp_pdma_read(size, dmalen, s->pdma_len);
     
@@ -961,9 +969,8 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
         break;
     }
 
-    s->rregs[ESP_TCLO] = dmalen & 0xff;
-    s->rregs[ESP_TCMID] = dmalen >> 8;
-    s->rregs[ESP_TCHI] = dmalen >> 16;
+    esp_set_tc(s, dmalen);
+
     //if (dmalen == 0 && s->pdma_cb) {
     if (s->pdma_len == 0 && s->pdma_cb) {
         esp_lower_drq(s);
