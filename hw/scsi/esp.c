@@ -424,7 +424,7 @@ static void do_dma_pdma_cb(ESPState *s)
          * complete the DMA operation immediately.  Otherwise defer
          * until the scsi layer has completed.
          */
-        if (to_device || s->dma_left != 0 || s->ti_size == 0) {
+        if (to_device || s->dma_left != 0) {
             return;
         }
     }
@@ -500,7 +500,7 @@ static void esp_do_dma(ESPState *s)
         /* If there is still data to be read from the device then
            complete the DMA operation immediately.  Otherwise defer
            until the scsi layer has completed.  */
-        if (to_device || s->dma_left != 0 || s->ti_size == 0) {
+        if (to_device || s->dma_left != 0) {
             return;
         }
     }
