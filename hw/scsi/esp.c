@@ -230,6 +230,7 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
     s->ti_size = 0;
     s->ti_rptr = 0;
     s->ti_wptr = 0;
+    esp_set_tc(s, 0);
 
     return dmalen;
 }
@@ -384,6 +385,7 @@ static void write_response(ESPState *s)
         s->ti_wptr = 2;
         s->rregs[ESP_RFLAGS] = 2;
     }
+    esp_set_tc(s, 2);
     esp_raise_irq(s);
 }
 
@@ -409,6 +411,7 @@ static void do_dma_pdma_cb(ESPState *s)
         return;
     }
     s->dma_left -= len;
+    esp_set_tc(s, esp_get_tc(s) - len);
     s->async_buf += len;
     s->async_len -= len;
     if (to_device) {
@@ -455,6 +458,7 @@ static void esp_do_dma(ESPState *s)
             return;
         }
         trace_esp_handle_ti_cmd(s->cmdlen);
+        esp_set_tc(s, 0);
         s->ti_size = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
@@ -488,6 +492,7 @@ static void esp_do_dma(ESPState *s)
         }
     }
     s->dma_left -= len;
+    esp_set_tc(s, esp_get_tc(s) - len);
     s->async_buf += len;
     s->async_len -= len;
     if (to_device)
@@ -579,6 +584,7 @@ static void handle_ti(ESPState *s)
     dmalen = esp_get_tc(s);
     if (dmalen == 0) {
         dmalen = 0x10000;
+        esp_set_tc(s, dmalen);
     }
 
     trace_esp_handle_ti(dmalen);
