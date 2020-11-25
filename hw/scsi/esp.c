@@ -249,7 +249,6 @@ static void do_busid_cmd(ESPState *s, uint8_t *buf, uint8_t busid)
     s->ti_size = datalen;
     if (datalen != 0) {
         s->rregs[ESP_RSTAT] = STAT_TC;
-        s->dma_left = 0;
         if (datalen > 0) {
             s->rregs[ESP_RSTAT] |= STAT_DI;
         } else {
@@ -410,8 +409,6 @@ static void do_dma_pdma_cb(ESPState *s)
         do_cmd(s, s->cmdbuf);
         return;
     }
-    s->dma_left -= len;
-    esp_set_tc(s, esp_get_tc(s) - len);
     s->async_buf += len;
     s->async_len -= len;
     if (to_device) {
@@ -426,7 +423,7 @@ static void do_dma_pdma_cb(ESPState *s)
          * complete the DMA operation immediately.  Otherwise defer
          * until the scsi layer has completed.
          */
-        if (to_device || s->dma_left != 0) {
+        if (to_device || esp_get_tc(s) != 0) {
             return;
         }
     }
@@ -440,7 +437,7 @@ static void esp_do_dma(ESPState *s)
     uint32_t len;
     int to_device = ((s->rregs[ESP_RSTAT] & 7) == STAT_DO);
 
-    len = s->dma_left;
+    len = esp_get_tc(s);
     if (s->do_cmd) {
         /*
          * handle_ti_cmd() case: esp_do_dma() is called only from
@@ -491,7 +488,6 @@ static void esp_do_dma(ESPState *s)
             return;
         }
     }
-    s->dma_left -= len;
     esp_set_tc(s, esp_get_tc(s) - len);
     s->async_buf += len;
     s->async_len -= len;
@@ -504,7 +500,7 @@ static void esp_do_dma(ESPState *s)
         /* If there is still data to be read from the device then
            complete the DMA operation immediately.  Otherwise defer
            until the scsi layer has completed.  */
-        if (to_device || s->dma_left != 0) {
+        if (to_device || esp_get_tc(s) != 0) {
             return;
         }
     }
@@ -520,7 +516,6 @@ static void esp_report_command_complete(ESPState *s, uint32_t status)
         trace_esp_command_complete_unexpected();
     }
     s->ti_size = 0;
-    s->dma_left = 0;
     s->async_len = 0;
     if (status) {
         trace_esp_command_complete_fail();
@@ -556,14 +551,15 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
 {
     ESPState *s = req->hba_private;
     int to_device = ((s->rregs[ESP_RSTAT] & 7) == STAT_DO);
+    int dmalen = esp_get_tc(s);
 
     fprintf(stderr, ">> XFC%d\n", xfcount++);
 
     assert(!s->do_cmd);
-    trace_esp_transfer_data(s->dma_left, s->ti_size);
+    trace_esp_transfer_data(dmalen, s->ti_size);
     s->async_len = len;
     s->async_buf = scsi_req_get_buf(req);
-    if (s->dma_left) {
+    if (dmalen) {
         esp_do_dma(s);
     } else if (to_device) {
         /* If this was the last part of a DMA transfer then the
@@ -589,7 +585,6 @@ static void handle_ti(ESPState *s)
 
     trace_esp_handle_ti(dmalen);
     if (s->dma) {
-        s->dma_left = dmalen;
         s->rregs[ESP_RSTAT] &= ~STAT_TC;
         esp_do_dma(s);
     } else if (s->do_cmd) {
