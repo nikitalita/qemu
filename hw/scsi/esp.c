@@ -122,22 +122,45 @@ static uint8_t *get_pdma_buf(ESPState *s)
     return NULL;
 }
 
+static uint32_t esp_get_tc(ESPState *s);
+static void esp_set_tc(ESPState *s, uint32_t dmalen);
+
 static uint8_t esp_pdma_read(ESPState *s)
 {
+    int dmalen = esp_get_tc(s);
+    uint8_t val = 0;
+
     switch (s->pdma_origin) {
     case TI:
-        return s->ti_buf[s->pdma_cur++];
+        val = s->ti_buf[s->pdma_cur++];
+        break;
     case CMD:
-        return s->cmdbuf[s->pdma_cur++];
+        val = s->cmdbuf[s->pdma_cur++];
+        break;
     case ASYNC:
-        return s->async_buf[s->pdma_cur++];
+        val = s->async_buf[s->pdma_cur++];
+        break;
     default:
         g_assert_not_reached();
     }
+
+    if (s->pdma_len > 0) {
+        s->pdma_len--;
+    }
+    dmalen--;
+    esp_set_tc(s, dmalen);
+
+    return val;
 }
 
 static void esp_pdma_write(ESPState *s, uint8_t val)
 {
+    int dmalen = esp_get_tc(s);
+
+    if (dmalen == 0 || s->pdma_len == 0) {
+        return;
+    }
+
     switch (s->pdma_origin) {
     case TI:
         s->ti_buf[s->pdma_cur++] = val;
@@ -151,6 +174,10 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
     default:
         g_assert_not_reached();
     }
+
+    s->pdma_len--;
+    dmalen--;
+    esp_set_tc(s, dmalen);
 }
 
 static uint32_t esp_get_tc(ESPState *s)
@@ -892,10 +919,7 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     uint32_t dmalen;
 
     dmalen = esp_get_tc(s);
-    if (dmalen == 0 || s->pdma_len == 0) {
-        return;
-    }
-    
+
     trace_esp_pdma_write(size, dmalen, s->pdma_len);
 
     if (dmalen != s->pdma_len) {
@@ -905,18 +929,12 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     switch (size) {
     case 1:
         esp_pdma_write(s, val);
-        s->pdma_len--;
-        dmalen--;
         break;
     case 2:
         esp_pdma_write(s, val >> 8);
         esp_pdma_write(s, val);
-        s->pdma_len -= 2;
-        dmalen -= 2;
         break;
     }
-
-    esp_set_tc(s, dmalen);
 
     if (s->pdma_len == 0 && s->pdma_cb) {
         esp_lower_drq(s);
@@ -936,11 +954,7 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     dmalen = esp_get_tc(s);
 
     trace_esp_pdma_read(size, dmalen, s->pdma_len);
-    
-    if (s->pdma_len == 0) {
-        return 0;
-    }
-    
+
     if (dmalen != s->pdma_len) {
         fprintf(stderr, "#### pdma_read mismatch!\n");
     }
@@ -948,24 +962,12 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     switch (size) {
     case 1:
         val = esp_pdma_read(s);
-        // FIXME
-        if (s->pdma_len > 0) {
-            s->pdma_len--;
-        }
-        dmalen--;
         break;
     case 2:
         val = esp_pdma_read(s);
         val = (val << 8) | esp_pdma_read(s);
-        // FIXME
-        if (s->pdma_len > 0) {
-            s->pdma_len -= 2;
-        }
-        dmalen -= 2;
         break;
     }
-
-    esp_set_tc(s, dmalen);
 
     //if (dmalen == 0 && s->pdma_cb) {
     if (s->pdma_len == 0 && s->pdma_cb) {
