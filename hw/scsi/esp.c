@@ -307,17 +307,15 @@ static void satn_pdma_cb(ESPState *s)
 
 static void handle_satn(ESPState *s)
 {
-    uint8_t buf[32];
-    int len;
-
     if (s->dma && !s->dma_enabled) {
         s->dma_cb = handle_satn;
         return;
     }
     s->pdma_cb = satn_pdma_cb;
-    len = get_cmd(s, buf, sizeof(buf));
-    if (len)
-        do_cmd(s, buf);
+    s->cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
+    if (s->cmdlen) {
+        do_cmd(s, s->cmdbuf);
+    }
 }
 
 static void s_without_satn_pdma_cb(ESPState *s)
