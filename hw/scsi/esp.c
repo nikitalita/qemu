@@ -138,7 +138,12 @@ static uint8_t esp_pdma_read(ESPState *s)
         val = s->cmdbuf[s->pdma_cur++];
         break;
     case ASYNC:
-        val = s->async_buf[s->pdma_cur++];
+        val = s->async_buf[0];
+        if (s->async_len > 0) {
+            s->async_len--;
+            s->async_buf++;
+        }
+        s->pdma_cur++;
         break;
     default:
         g_assert_not_reached();
@@ -170,7 +175,12 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
         s->cmdbuf[s->pdma_cur++] = val;
         break;
     case ASYNC:
-        s->async_buf[s->pdma_cur++] = val;
+        s->async_buf[0] = val;
+        if (s->async_len > 0) {
+            s->async_len--;
+            s->async_buf++;
+        }
+        s->pdma_cur++;
         break;
     default:
         g_assert_not_reached();
@@ -425,7 +435,6 @@ static void esp_dma_done(ESPState *s)
 static void do_dma_pdma_cb(ESPState *s)
 {
     int to_device = ((s->rregs[ESP_RSTAT] & 7) == STAT_DO);
-    int len = s->pdma_cur - s->pdma_start;
     //fprintf(stderr, "### origin: %d, len: %d\n", s->pdma_origin, len);
 
     if (s->do_cmd) {
@@ -435,8 +444,6 @@ static void do_dma_pdma_cb(ESPState *s)
         do_cmd(s, s->cmdbuf);
         return;
     }
-    s->async_buf += len;
-    s->async_len -= len;
     if (s->async_len == 0) {
         scsi_req_continue(s->current_req);
         /*
@@ -930,7 +937,8 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
         break;
     }
 
-    if (s->pdma_len == 0 && s->pdma_cb) {
+    dmalen = esp_get_tc(s);
+    if (dmalen == 0 && s->pdma_cb) {
         esp_lower_drq(s);
         s->pdma_cb(s);
         s->pdma_cb = NULL;
@@ -963,8 +971,8 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
         break;
     }
 
-    //if (dmalen == 0 && s->pdma_cb) {
-    if (s->pdma_len == 0 && s->pdma_cb) {
+    dmalen = esp_get_tc(s);
+    if (dmalen == 0 && s->pdma_cb) {
         esp_lower_drq(s);
         s->pdma_cb(s);
         s->pdma_cb = NULL;
