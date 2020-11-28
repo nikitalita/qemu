@@ -312,9 +312,7 @@ static void satn_pdma_cb(ESPState *s)
     if (get_cmd_cb(s) < 0) {
         return;
     }
-    if (s->pdma_cur != s->pdma_start) {
-        do_cmd(s, get_pdma_buf(s) + s->pdma_start);
-    }
+    do_cmd(s, get_pdma_buf(s));
 }
 
 static void handle_satn(ESPState *s)
@@ -335,9 +333,7 @@ static void s_without_satn_pdma_cb(ESPState *s)
     if (get_cmd_cb(s) < 0) {
         return;
     }
-    if (s->pdma_cur != s->pdma_start) {
-        do_busid_cmd(s, get_pdma_buf(s) + s->pdma_start, 0);
-    }
+    do_busid_cmd(s, get_pdma_buf(s), 0);
 }
 
 static void handle_s_without_atn(ESPState *s)
@@ -358,7 +354,7 @@ static void satn_stop_pdma_cb(ESPState *s)
     if (get_cmd_cb(s) < 0) {
         return;
     }
-    s->cmdlen = s->pdma_cur - s->pdma_start;
+    s->cmdlen = s->pdma_cur;
     if (s->cmdlen) {
         trace_esp_handle_satn_stop(s->cmdlen);
         s->do_cmd = 1;
