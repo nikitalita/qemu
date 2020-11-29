@@ -58,7 +58,7 @@ struct ESPState {
     void (*dma_cb)(ESPState *s);
     uint8_t pdma_buf[32];
     int pdma_origin;
-    uint32_t pdma_len;
+    //uint32_t pdma_len;
     //uint32_t pdma_start;
     uint32_t pdma_cur;
     void (*pdma_cb)(ESPState *s);
