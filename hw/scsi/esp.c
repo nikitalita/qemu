@@ -104,7 +104,6 @@ static void set_pdma(ESPState *s, enum pdma_origin_id origin,
                      uint32_t index)
 {
     s->pdma_origin = origin;
-    s->pdma_cur = 0;
 }
 
 static uint8_t *get_pdma_buf(ESPState *s)
@@ -128,9 +127,7 @@ static uint8_t esp_pdma_read(ESPState *s)
 
     switch (s->pdma_origin) {
     case TI:
-        assert(s->pdma_cur == s->ti_rptr);
         val = s->ti_buf[s->ti_rptr++];
-        s->pdma_cur++;
         break;
     case ASYNC:
         val = s->async_buf[0];
@@ -138,7 +135,6 @@ static uint8_t esp_pdma_read(ESPState *s)
             s->async_len--;
             s->async_buf++;
         }
-        s->pdma_cur++;
         break;
     default:
         g_assert_not_reached();
@@ -161,9 +157,7 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
 
     switch (s->pdma_origin) {
     case TI:
-        assert(s->pdma_cur == s->ti_wptr);
         s->ti_buf[s->ti_wptr++] = val;
-        s->pdma_cur++;
         break;
     case ASYNC:
         s->async_buf[0] = val;
@@ -171,7 +165,6 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
             s->async_len--;
             s->async_buf++;
         }
-        s->pdma_cur++;
         break;
     default:
         g_assert_not_reached();
@@ -344,7 +337,7 @@ static void satn_stop_pdma_cb(ESPState *s)
     if (get_cmd_cb(s) < 0) {
         return;
     }
-    s->cmdlen = s->pdma_cur;
+    s->cmdlen = s->ti_wptr;
     if (s->cmdlen) {
         trace_esp_handle_satn_stop(s->cmdlen);
         s->do_cmd = 1;
@@ -833,7 +826,7 @@ static const VMStateDescription vmstate_esp_pdma = {
         VMSTATE_INT32(pdma_origin, ESPState),
         //VMSTATE_UINT32(pdma_len, ESPState),
         //VMSTATE_UINT32(pdma_start, ESPState),
-        VMSTATE_UINT32(pdma_cur, ESPState),
+        //VMSTATE_UINT32(pdma_cur, ESPState),
         VMSTATE_END_OF_LIST()
     }
 };
