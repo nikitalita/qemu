@@ -104,7 +104,6 @@ static void set_pdma(ESPState *s, enum pdma_origin_id origin,
                      uint32_t index, uint32_t len)
 {
     s->pdma_origin = origin;
-    s->pdma_start = index;
     s->pdma_cur = index;
     s->pdma_len = len;
 }
@@ -847,7 +846,7 @@ static const VMStateDescription vmstate_esp_pdma = {
         VMSTATE_BUFFER(pdma_buf, ESPState),
         VMSTATE_INT32(pdma_origin, ESPState),
         VMSTATE_UINT32(pdma_len, ESPState),
-        VMSTATE_UINT32(pdma_start, ESPState),
+        //VMSTATE_UINT32(pdma_start, ESPState),
         VMSTATE_UINT32(pdma_cur, ESPState),
         VMSTATE_END_OF_LIST()
     }
