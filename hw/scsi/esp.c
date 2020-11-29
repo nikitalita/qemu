@@ -100,8 +100,7 @@ void esp_request_cancelled(SCSIRequest *req)
     }
 }
 
-static void set_pdma(ESPState *s, enum pdma_origin_id origin,
-                     uint32_t index)
+static void set_pdma(ESPState *s, enum pdma_origin_id origin)
 {
     s->pdma_origin = origin;
 }
@@ -231,7 +230,7 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, buf, dmalen);
         } else {
-            set_pdma(s, TI, 0);
+            set_pdma(s, TI);
             esp_raise_drq(s);
             return 0;
         }
@@ -386,7 +385,7 @@ static void write_response(ESPState *s)
             s->rregs[ESP_RINTR] = INTR_BS | INTR_FC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
         } else {
-            set_pdma(s, TI, 0);
+            set_pdma(s, TI);
             s->pdma_cb = write_response_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -457,7 +456,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->ti_buf, len);
         } else {
-            set_pdma(s, TI, s->cmdlen);
+            set_pdma(s, TI);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -481,7 +480,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->async_buf, len);
         } else {
-            set_pdma(s, ASYNC, 0);
+            set_pdma(s, ASYNC);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -490,7 +489,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_write) {
             s->dma_memory_write(s->dma_opaque, s->async_buf, len);
         } else {
-            set_pdma(s, ASYNC, 0);
+            set_pdma(s, ASYNC);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
