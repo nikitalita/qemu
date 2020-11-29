@@ -128,7 +128,9 @@ static uint8_t esp_pdma_read(ESPState *s)
 
     switch (s->pdma_origin) {
     case TI:
-        val = s->ti_buf[s->pdma_cur++];
+        assert(s->pdma_cur == s->ti_rptr);
+        val = s->ti_buf[s->ti_rptr++];
+        s->pdma_cur++;
         break;
     case ASYNC:
         val = s->async_buf[0];
@@ -159,7 +161,9 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
 
     switch (s->pdma_origin) {
     case TI:
-        s->ti_buf[s->pdma_cur++] = val;
+        assert(s->pdma_cur == s->ti_wptr);
+        s->ti_buf[s->ti_wptr++] = val;
+        s->pdma_cur++;
         break;
     case ASYNC:
         s->async_buf[0] = val;
