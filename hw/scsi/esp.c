@@ -101,11 +101,10 @@ void esp_request_cancelled(SCSIRequest *req)
 }
 
 static void set_pdma(ESPState *s, enum pdma_origin_id origin,
-                     uint32_t index, uint32_t len)
+                     uint32_t index)
 {
     s->pdma_origin = origin;
     s->pdma_cur = index;
-    s->pdma_len = len;
 }
 
 static uint8_t *get_pdma_buf(ESPState *s)
@@ -149,9 +148,6 @@ static uint8_t esp_pdma_read(ESPState *s)
     }
 
     s->ti_size--;
-    if (s->pdma_len > 0) {
-        s->pdma_len--;
-    }
     dmalen--;
     esp_set_tc(s, dmalen);
 
@@ -162,7 +158,7 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
 {
     int dmalen = esp_get_tc(s);
 
-    if (dmalen == 0 || s->pdma_len == 0) {
+    if (dmalen == 0) {
         return;
     }
 
@@ -186,7 +182,6 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
     }
 
     s->ti_size++;
-    s->pdma_len--;
     dmalen--;
     esp_set_tc(s, dmalen);
 }
@@ -247,7 +242,7 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, buf, dmalen);
         } else {
-            set_pdma(s, TI, 0, dmalen);
+            set_pdma(s, TI, 0);
             esp_raise_drq(s);
             return 0;
         }
@@ -402,7 +397,7 @@ static void write_response(ESPState *s)
             s->rregs[ESP_RINTR] = INTR_BS | INTR_FC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
         } else {
-            set_pdma(s, TI, 0, 2);
+            set_pdma(s, TI, 0);
             s->pdma_cb = write_response_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -472,7 +467,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, &s->cmdbuf[s->cmdlen], len);
         } else {
-            set_pdma(s, CMD, s->cmdlen, len);
+            set_pdma(s, CMD, s->cmdlen);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -496,7 +491,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->async_buf, len);
         } else {
-            set_pdma(s, ASYNC, 0, len);
+            set_pdma(s, ASYNC, 0);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -505,7 +500,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_write) {
             s->dma_memory_write(s->dma_opaque, s->async_buf, len);
         } else {
-            set_pdma(s, ASYNC, 0, len);
+            set_pdma(s, ASYNC, 0);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -845,7 +840,7 @@ static const VMStateDescription vmstate_esp_pdma = {
     .fields = (VMStateField[]) {
         VMSTATE_BUFFER(pdma_buf, ESPState),
         VMSTATE_INT32(pdma_origin, ESPState),
-        VMSTATE_UINT32(pdma_len, ESPState),
+        //VMSTATE_UINT32(pdma_len, ESPState),
         //VMSTATE_UINT32(pdma_start, ESPState),
         VMSTATE_UINT32(pdma_cur, ESPState),
         VMSTATE_END_OF_LIST()
@@ -916,11 +911,7 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
 
     dmalen = esp_get_tc(s);
 
-    trace_esp_pdma_write(size, dmalen, s->pdma_len);
-
-    if (dmalen != s->pdma_len) {
-        fprintf(stderr, "#### pdma_write mismatch!\n");
-    }
+    trace_esp_pdma_write(size, dmalen);
 
     switch (size) {
     case 1:
@@ -950,11 +941,7 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
 
     dmalen = esp_get_tc(s);
 
-    trace_esp_pdma_read(size, dmalen, s->pdma_len);
-
-    if (dmalen != s->pdma_len) {
-        fprintf(stderr, "#### pdma_read mismatch!\n");
-    }
+    trace_esp_pdma_read(size, dmalen);
 
     switch (size) {
     case 1:
