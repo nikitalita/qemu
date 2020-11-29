@@ -104,7 +104,7 @@ static void set_pdma(ESPState *s, enum pdma_origin_id origin,
                      uint32_t index)
 {
     s->pdma_origin = origin;
-    s->pdma_cur = index;
+    s->pdma_cur = 0;
 }
 
 static uint8_t *get_pdma_buf(ESPState *s)
@@ -428,6 +428,7 @@ static void do_dma_pdma_cb(ESPState *s)
     //fprintf(stderr, "### origin: %d, len: %d\n", s->pdma_origin, len);
 
     if (s->do_cmd) {
+        memcpy(&s->cmdbuf[s->cmdlen], s->ti_buf, s->ti_size - s->cmdlen);
         s->ti_size = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
@@ -465,9 +466,9 @@ static void esp_do_dma(ESPState *s)
         assert (s->cmdlen <= sizeof(s->cmdbuf) &&
                 len <= sizeof(s->cmdbuf) - s->cmdlen);
         if (s->dma_memory_read) {
-            s->dma_memory_read(s->dma_opaque, &s->cmdbuf[s->cmdlen], len);
+            s->dma_memory_read(s->dma_opaque, s->ti_buf, len);
         } else {
-            set_pdma(s, CMD, s->cmdlen);
+            set_pdma(s, TI, s->cmdlen);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -699,13 +700,7 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
         s->rregs[ESP_RSTAT] &= ~STAT_TC;
         break;
     case ESP_FIFO:
-        if (s->do_cmd) {
-            if (s->cmdlen < ESP_CMDBUF_SZ) {
-                s->cmdbuf[s->cmdlen++] = val & 0xff;
-            } else {
-                trace_esp_error_fifo_overrun();
-            }
-        } else if (s->ti_wptr == TI_BUFSZ - 1) {
+        if (s->ti_wptr == TI_BUFSZ - 1) {
             trace_esp_error_fifo_overrun();
         } else {
             s->ti_size++;
