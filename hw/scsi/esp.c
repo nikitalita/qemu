@@ -334,6 +334,10 @@ static void handle_s_without_atn(ESPState *s)
     if (cmdlen > 0) {
         s->cmdlen = cmdlen;
         do_busid_cmd(s, s->cmdbuf, 0);
+    } else if (cmdlen == 0) {
+        /* Target present, but no cmd yet - switch to command phase */
+        s->rregs[ESP_RSEQ] = SEQ_CD;
+        s->rregs[ESP_RSTAT] = STAT_CD;
     }
 }
 
