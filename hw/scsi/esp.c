@@ -216,7 +216,7 @@ static int esp_select(ESPState *s)
     return 0;
 }
 
-static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
+static int32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
 {
     uint32_t dmalen;
     int target;
@@ -245,7 +245,7 @@ static uint32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
     trace_esp_get_cmd(dmalen, target);
 
     if (esp_select(s) < 0) {
-        return 0;
+        return -1;
     }
 
     s->ti_size = 0;
@@ -299,13 +299,16 @@ static void satn_pdma_cb(ESPState *s)
 
 static void handle_satn(ESPState *s)
 {
+    int cmdlen;
+
     if (s->dma && !s->dma_enabled) {
         s->dma_cb = handle_satn;
         return;
     }
     s->pdma_cb = satn_pdma_cb;
-    s->cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
-    if (s->cmdlen) {
+    cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
+    if (cmdlen > 0) {
+        s->cmdlen = cmdlen;
         do_cmd(s, s->cmdbuf);
     }
 }
@@ -320,13 +323,16 @@ static void s_without_satn_pdma_cb(ESPState *s)
 
 static void handle_s_without_atn(ESPState *s)
 {
+    int cmdlen;
+
     if (s->dma && !s->dma_enabled) {
         s->dma_cb = handle_s_without_atn;
         return;
     }
     s->pdma_cb = s_without_satn_pdma_cb;
-    s->cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
-    if (s->cmdlen) {
+    cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
+    if (cmdlen > 0) {
+        s->cmdlen = cmdlen;
         do_busid_cmd(s, s->cmdbuf, 0);
     }
 }
@@ -349,13 +355,16 @@ static void satn_stop_pdma_cb(ESPState *s)
 
 static void handle_satn_stop(ESPState *s)
 {
+    int cmdlen;
+
     if (s->dma && !s->dma_enabled) {
         s->dma_cb = handle_satn_stop;
         return;
     }
     s->pdma_cb = satn_stop_pdma_cb;
-    s->cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
-    if (s->cmdlen) {
+    cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
+    if (cmdlen) {
+        s->cmdlen = cmdlen;
         trace_esp_handle_satn_stop(s->cmdlen);
         s->do_cmd = 1;
         s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
