@@ -431,6 +431,8 @@ static void do_dma_pdma_cb(ESPState *s)
     if (s->do_cmd) {
         memcpy(&s->cmdbuf[s->cmdlen], s->ti_buf, s->ti_size - s->cmdlen);
         s->ti_size = 0;
+        s->ti_wptr = 0;
+        s->ti_rptr = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
         do_cmd(s, s->cmdbuf);
@@ -469,6 +471,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->ti_buf, len);
         } else {
+            assert(s->ti_wptr == 0 && s->ti_rptr == 0);
             set_pdma(s, TI);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
@@ -477,6 +480,8 @@ static void esp_do_dma(ESPState *s)
         trace_esp_handle_ti_cmd(s->cmdlen);
         esp_set_tc(s, 0);
         s->ti_size = 0;
+        s->ti_wptr = 0;
+        s->ti_rptr = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
         do_cmd(s, s->cmdbuf);
@@ -493,6 +498,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->async_buf, len);
         } else {
+            assert(s->ti_wptr == 0 && s->ti_rptr == 0);
             set_pdma(s, ASYNC);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
@@ -502,6 +508,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_write) {
             s->dma_memory_write(s->dma_opaque, s->async_buf, len);
         } else {
+            assert(s->ti_wptr == 0 && s->ti_rptr == 0);
             set_pdma(s, ASYNC);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
