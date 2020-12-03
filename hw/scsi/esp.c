@@ -462,12 +462,13 @@ static void do_dma_pdma_cb(ESPState *s)
             s->async_buf += len;
             s->async_len -= len;
             esp_set_tc(s, esp_get_tc(s) - len);
-            esp_raise_drq(s);
+            //esp_raise_drq(s);
             return;
         }
     }
 
     /* Partially filled a scsi buffer. Complete immediately.  */
+    esp_lower_drq(s);
     esp_dma_done(s);
 }
 
@@ -981,7 +982,6 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
 
     dmalen = esp_get_tc(s);
     if (s->ti_rptr == s->ti_wptr) {
-        esp_lower_drq(s);
         s->pdma_cb(s);
     }
     return val;
