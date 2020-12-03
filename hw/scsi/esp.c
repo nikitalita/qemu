@@ -121,7 +121,7 @@ static void esp_set_tc(ESPState *s, uint32_t dmalen);
 
 static uint8_t esp_pdma_read(ESPState *s)
 {
-    int dmalen = esp_get_tc(s);
+    //int dmalen = esp_get_tc(s);
     uint8_t val = 0;
 
     switch (s->pdma_origin) {
@@ -140,8 +140,8 @@ static uint8_t esp_pdma_read(ESPState *s)
     }
 
     s->ti_size--;
-    dmalen--;
-    esp_set_tc(s, dmalen);
+    //dmalen--;
+    //esp_set_tc(s, dmalen);
 
     return val;
 }
@@ -426,6 +426,7 @@ static void esp_dma_done(ESPState *s)
 static void do_dma_pdma_cb(ESPState *s)
 {
     int to_device = ((s->rregs[ESP_RSTAT] & 7) == STAT_DO);
+    int len;
     //fprintf(stderr, "### origin: %d, len: %d\n", s->pdma_origin, len);
 
     if (s->do_cmd) {
@@ -438,6 +439,7 @@ static void do_dma_pdma_cb(ESPState *s)
         do_cmd(s, s->cmdbuf);
         return;
     }
+
     if (s->async_len == 0) {
         scsi_req_continue(s->current_req);
         /*
@@ -446,6 +448,21 @@ static void do_dma_pdma_cb(ESPState *s)
          * until the scsi layer has completed.
          */
         if (to_device || esp_get_tc(s) != 0) {
+            return;
+        }
+    } else {
+        if (!to_device && esp_get_tc(s) != 0) {
+            /* Get next FIFO data */
+            //s->ti_size = 0;
+            s->ti_wptr = 0;
+            s->ti_rptr = 0;
+            len = MIN(s->async_len, TI_BUFSZ);
+            memcpy(s->ti_buf, s->async_buf, len);
+            s->ti_wptr += len;
+            s->async_buf += len;
+            s->async_len -= len;
+            esp_set_tc(s, esp_get_tc(s) - len);
+            esp_raise_drq(s);
             return;
         }
     }
@@ -509,7 +526,13 @@ static void esp_do_dma(ESPState *s)
             s->dma_memory_write(s->dma_opaque, s->async_buf, len);
         } else {
             assert(s->ti_wptr == 0 && s->ti_rptr == 0);
-            set_pdma(s, ASYNC);
+            len = MIN(len, TI_BUFSZ - s->ti_wptr);
+            memcpy(&s->ti_buf[s->ti_wptr], s->async_buf, len);
+            s->ti_wptr += len;
+            s->async_buf += len;
+            s->async_len -= len;
+            esp_set_tc(s, esp_get_tc(s) - len);
+            set_pdma(s, TI);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -957,10 +980,9 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
     }
 
     dmalen = esp_get_tc(s);
-    if (dmalen == 0 && s->pdma_cb) {
+    if (s->ti_rptr == s->ti_wptr) {
         esp_lower_drq(s);
         s->pdma_cb(s);
-        s->pdma_cb = NULL;
     }
     return val;
 }
