@@ -451,19 +451,26 @@ static void do_dma_pdma_cb(ESPState *s)
             return;
         }
     } else {
-        if (!to_device && esp_get_tc(s) != 0) {
-            /* Get next FIFO data */
-            //s->ti_size = 0;
-            s->ti_wptr = 0;
-            s->ti_rptr = 0;
-            len = MIN(s->async_len, TI_BUFSZ);
-            memcpy(s->ti_buf, s->async_buf, len);
-            s->ti_wptr += len;
-            s->async_buf += len;
-            s->async_len -= len;
-            esp_set_tc(s, esp_get_tc(s) - len);
-            //esp_raise_drq(s);
-            return;
+        if (to_device) {
+            /* Load FIFO with data from memory */
+            if (esp_get_tc(s) != 0) {
+                assert(0);
+            }
+        } else {
+            if (esp_get_tc(s) != 0) {
+                /* Load FIFO with data from device */
+                //s->ti_size = 0;
+                s->ti_wptr = 0;
+                s->ti_rptr = 0;
+                len = MIN(s->async_len, TI_BUFSZ);
+                memcpy(s->ti_buf, s->async_buf, len);
+                s->ti_wptr += len;
+                s->async_buf += len;
+                s->async_len -= len;
+                esp_set_tc(s, esp_get_tc(s) - len);
+                //esp_raise_drq(s);
+                return;
+            }
         }
     }
 
