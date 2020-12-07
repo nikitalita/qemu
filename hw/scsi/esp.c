@@ -294,6 +294,9 @@ static void satn_pdma_cb(ESPState *s)
     if (esp_select(s) < 0) {
         return;
     }
+    s->ti_wptr = 0;
+    s->ti_rptr = 0;
+    //fprintf(stderr, "### DOCMD2!\n");
     do_cmd(s, get_pdma_buf(s));
 }
 
@@ -309,6 +312,7 @@ static void handle_satn(ESPState *s)
     cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
     if (cmdlen > 0) {
         s->cmdlen = cmdlen;
+        //fprintf(stderr, "### DOCMD3!\n");
         do_cmd(s, s->cmdbuf);
     }
 }
@@ -318,6 +322,7 @@ static void s_without_satn_pdma_cb(ESPState *s)
     if (esp_select(s) < 0) {
         return;
     }
+    //fprintf(stderr, "### DOCMD4!\n");
     do_busid_cmd(s, get_pdma_buf(s), 0);
 }
 
@@ -332,6 +337,7 @@ static void handle_s_without_atn(ESPState *s)
     s->pdma_cb = s_without_satn_pdma_cb;
     cmdlen = get_cmd(s, s->cmdbuf, sizeof(s->cmdbuf));
     if (cmdlen > 0) {
+        //fprintf(stderr, "### DOCMD6!\n");
         s->cmdlen = cmdlen;
         do_busid_cmd(s, s->cmdbuf, 0);
     } else if (cmdlen == 0) {
@@ -346,6 +352,7 @@ static void satn_stop_pdma_cb(ESPState *s)
     if (esp_select(s) < 0) {
         return;
     }
+    //fprintf(stderr, "### DOCMD5!\n");
     s->cmdlen = s->ti_wptr;
     if (s->cmdlen) {
         trace_esp_handle_satn_stop(s->cmdlen);
@@ -431,52 +438,73 @@ static void do_dma_pdma_cb(ESPState *s)
 
     if (s->do_cmd) {
         memcpy(&s->cmdbuf[s->cmdlen], s->ti_buf, s->ti_size - s->cmdlen);
+        esp_set_tc(s, 0);
         s->ti_size = 0;
         s->ti_wptr = 0;
         s->ti_rptr = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
+        //fprintf(stderr, "### DOCMD7!\n");
+        esp_lower_drq(s);
         do_cmd(s, s->cmdbuf);
         return;
     }
 
-    if (s->async_len == 0) {
-        scsi_req_continue(s->current_req);
-        /*
-         * If there is still data to be read from the device then
-         * complete the DMA operation immediately.  Otherwise defer
-         * until the scsi layer has completed.
-         */
-        if (to_device || esp_get_tc(s) != 0) {
+    if (to_device) {
+        /* Copy FIFO data to device */
+        len = MIN(s->ti_wptr, TI_BUFSZ);
+        memcpy(s->async_buf, s->ti_buf, len);
+        s->ti_wptr = 0;
+        s->ti_rptr = 0;
+        s->async_buf += len;
+        s->async_len -= len;
+
+        if (s->async_len == 0) {
+            scsi_req_continue(s->current_req);
+            /*
+             * If there is still data to be read from the device then
+             * complete the DMA operation immediately.  Otherwise defer
+             * until the scsi layer has completed.
+             */
             return;
         }
+
+        if (esp_get_tc(s) == 0) {
+            esp_lower_drq(s);
+            esp_dma_done(s);
+        }
+
+        return;
     } else {
-        if (to_device) {
-            /* Load FIFO with data from memory */
+        if (s->async_len == 0) {
+            scsi_req_continue(s->current_req);
+            /*
+             * If there is still data to be read from the device then
+             * complete the DMA operation immediately.  Otherwise defer
+             * until the scsi layer has completed.
+             */
             if (esp_get_tc(s) != 0) {
-                assert(0);
-            }
-        } else {
-            if (esp_get_tc(s) != 0) {
-                /* Load FIFO with data from device */
-                //s->ti_size = 0;
-                s->ti_wptr = 0;
-                s->ti_rptr = 0;
-                len = MIN(s->async_len, TI_BUFSZ);
-                memcpy(s->ti_buf, s->async_buf, len);
-                s->ti_wptr += len;
-                s->async_buf += len;
-                s->async_len -= len;
-                esp_set_tc(s, esp_get_tc(s) - len);
-                //esp_raise_drq(s);
                 return;
             }
         }
-    }
 
-    /* Partially filled a scsi buffer. Complete immediately.  */
-    esp_lower_drq(s);
-    esp_dma_done(s);
+        if (esp_get_tc(s) != 0) {
+            /* Copy device data to FIFO */
+            s->ti_wptr = 0;
+            s->ti_rptr = 0;
+            len = MIN(s->async_len, TI_BUFSZ);
+            memcpy(s->ti_buf, s->async_buf, len);
+            s->ti_wptr += len;
+            s->async_buf += len;
+            s->async_len -= len;
+            esp_set_tc(s, esp_get_tc(s) - len);
+            return;
+        }
+
+        /* Partially filled a scsi buffer. Complete immediately.  */
+        esp_lower_drq(s);
+        esp_dma_done(s);
+    }
 }
 
 static void esp_do_dma(ESPState *s)
@@ -509,6 +537,7 @@ static void esp_do_dma(ESPState *s)
         s->ti_rptr = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
+        esp_lower_drq(s);
         do_cmd(s, s->cmdbuf);
         return;
     }
@@ -524,7 +553,7 @@ static void esp_do_dma(ESPState *s)
             s->dma_memory_read(s->dma_opaque, s->async_buf, len);
         } else {
             assert(s->ti_wptr == 0 && s->ti_rptr == 0);
-            set_pdma(s, ASYNC);
+            set_pdma(s, TI);
             s->pdma_cb = do_dma_pdma_cb;
             esp_raise_drq(s);
             return;
@@ -622,6 +651,7 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
     } else if (to_device) {
         /* If this was the last part of a DMA transfer then the
            completion interrupt is deferred to here.  */
+        esp_lower_drq(s);
         esp_dma_done(s);
     }
 }
@@ -650,6 +680,7 @@ static void handle_ti(ESPState *s)
         s->ti_size = 0;
         s->cmdlen = 0;
         s->do_cmd = 0;
+        //fprintf(stderr, "### DOCMD1!\n");
         do_cmd(s, s->cmdbuf);
     }
 }
@@ -958,10 +989,8 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
     }
 
     dmalen = esp_get_tc(s);
-    if (dmalen == 0 && s->pdma_cb) {
-        esp_lower_drq(s);
+    if ((s->ti_wptr == TI_BUFSZ) || dmalen == 0) {
         s->pdma_cb(s);
-        s->pdma_cb = NULL;
     }
 }
 
