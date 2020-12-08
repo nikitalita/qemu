@@ -760,6 +760,9 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
             val = s->chip_id;
         }
         break;
+    case ESP_RFLAGS:
+        val = s->ti_wptr - s->ti_rptr;
+        break;
     default:
         val = s->rregs[saddr];
         break;
