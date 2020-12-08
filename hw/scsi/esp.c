@@ -105,17 +105,6 @@ static void set_pdma(ESPState *s, enum pdma_origin_id origin)
     s->pdma_origin = origin;
 }
 
-static uint8_t *get_pdma_buf(ESPState *s)
-{
-    switch (s->pdma_origin) {
-    case TI:
-        return s->ti_buf;
-    case ASYNC:
-        return s->async_buf;
-    }
-    return NULL;
-}
-
 static uint32_t esp_get_tc(ESPState *s);
 static void esp_set_tc(ESPState *s, uint32_t dmalen);
 
@@ -156,7 +145,11 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
 
     switch (s->pdma_origin) {
     case TI:
-        s->ti_buf[s->ti_wptr++] = val;
+        if (s->do_cmd) {
+            s->cmdbuf[s->cmdlen++] = val;
+        } else {
+            s->ti_buf[s->ti_wptr++] = val;
+        }
         break;
     case ASYNC:
         s->async_buf[0] = val;
@@ -298,10 +291,12 @@ static void satn_pdma_cb(ESPState *s)
     if (esp_select(s) < 0) {
         return;
     }
+    s->ti_size = 0;
     s->ti_wptr = 0;
     s->ti_rptr = 0;
+    s->do_cmd = 0;
     //fprintf(stderr, "### DOCMD2!\n");
-    do_cmd(s, get_pdma_buf(s));
+    do_cmd(s, s->cmdbuf);
 }
 
 static void handle_satn(ESPState *s)
@@ -318,6 +313,12 @@ static void handle_satn(ESPState *s)
         s->cmdlen = cmdlen;
         //fprintf(stderr, "### DOCMD3!\n");
         do_cmd(s, s->cmdbuf);
+    } else if (cmdlen == 0) {
+        /* Target present, but no cmd yet - switch to command phase */
+        s->cmdlen = 0;
+        s->do_cmd = 1;
+        s->rregs[ESP_RSEQ] = SEQ_CD;
+        s->rregs[ESP_RSTAT] = STAT_CD;
     }
 }
 
@@ -327,7 +328,8 @@ static void s_without_satn_pdma_cb(ESPState *s)
         return;
     }
     //fprintf(stderr, "### DOCMD4!\n");
-    do_busid_cmd(s, get_pdma_buf(s), 0);
+    s->do_cmd = 0;
+    do_busid_cmd(s, s->cmdbuf, 0);
 }
 
 static void handle_s_without_atn(ESPState *s)
@@ -346,6 +348,8 @@ static void handle_s_without_atn(ESPState *s)
         do_busid_cmd(s, s->cmdbuf, 0);
     } else if (cmdlen == 0) {
         /* Target present, but no cmd yet - switch to command phase */
+        s->cmdlen = 0;
+        s->do_cmd = 1;
         s->rregs[ESP_RSEQ] = SEQ_CD;
         s->rregs[ESP_RSTAT] = STAT_CD;
     }
@@ -357,14 +361,14 @@ static void satn_stop_pdma_cb(ESPState *s)
         return;
     }
     //fprintf(stderr, "### DOCMD5!\n");
-    s->cmdlen = s->ti_wptr;
     if (s->cmdlen) {
         trace_esp_handle_satn_stop(s->cmdlen);
-        s->do_cmd = 1;
         s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
         s->rregs[ESP_RINTR] = INTR_BS | INTR_FC;
         s->rregs[ESP_RSEQ] = SEQ_CD;
         esp_raise_irq(s);
+    } else {
+        s->do_cmd = 0;
     }
 }
 
@@ -386,6 +390,12 @@ static void handle_satn_stop(ESPState *s)
         s->rregs[ESP_RINTR] = INTR_BS | INTR_FC;
         s->rregs[ESP_RSEQ] = SEQ_CD;
         esp_raise_irq(s);
+    } else if (cmdlen == 0) {
+        /* Target present, but no cmd yet - switch to command phase */
+        s->cmdlen = 0;
+        s->do_cmd = 1;
+        s->rregs[ESP_RSEQ] = SEQ_CD;
+        s->rregs[ESP_RSTAT] = STAT_CD;
     }
 }
 
@@ -441,7 +451,6 @@ static void do_dma_pdma_cb(ESPState *s)
     //fprintf(stderr, "### origin: %d, len: %d\n", s->pdma_origin, len);
 
     if (s->do_cmd) {
-        memcpy(&s->cmdbuf[s->cmdlen], s->ti_buf, s->ti_size - s->cmdlen);
         esp_set_tc(s, 0);
         s->ti_size = 0;
         s->ti_wptr = 0;
@@ -526,7 +535,7 @@ static void esp_do_dma(ESPState *s)
         assert (s->cmdlen <= sizeof(s->cmdbuf) &&
                 len <= sizeof(s->cmdbuf) - s->cmdlen);
         if (s->dma_memory_read) {
-            s->dma_memory_read(s->dma_opaque, s->ti_buf, len);
+            s->dma_memory_read(s->dma_opaque, &s->cmdbuf[s->cmdlen], len);
         } else {
             assert(s->ti_wptr == 0 && s->ti_rptr == 0);
             set_pdma(s, TI);
@@ -778,7 +787,13 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
         s->rregs[ESP_RSTAT] &= ~STAT_TC;
         break;
     case ESP_FIFO:
-        if (s->ti_wptr == TI_BUFSZ - 1) {
+        if (s->do_cmd) {
+            if (s->cmdlen < ESP_CMDBUF_SZ) {
+                s->cmdbuf[s->cmdlen++] = val & 0xff;
+            } else {
+                trace_esp_error_fifo_overrun();
+            }
+        } else if (s->ti_wptr == TI_BUFSZ - 1) {
             trace_esp_error_fifo_overrun();
         } else {
             s->ti_size++;
