@@ -228,6 +228,9 @@ static int32_t get_cmd(ESPState *s, uint8_t *buf, uint8_t buflen)
             s->dma_memory_read(s->dma_opaque, buf, dmalen);
         } else {
             set_pdma(s, TI);
+            if (esp_select(s) < 0) {
+                return -1;
+            }
             esp_raise_drq(s);
             return 0;
         }
@@ -288,9 +291,6 @@ static void do_cmd(ESPState *s, uint8_t *buf)
 
 static void satn_pdma_cb(ESPState *s)
 {
-    if (esp_select(s) < 0) {
-        return;
-    }
     s->ti_size = 0;
     s->ti_wptr = 0;
     s->ti_rptr = 0;
@@ -324,9 +324,6 @@ static void handle_satn(ESPState *s)
 
 static void s_without_satn_pdma_cb(ESPState *s)
 {
-    if (esp_select(s) < 0) {
-        return;
-    }
     //fprintf(stderr, "### DOCMD4!\n");
     s->do_cmd = 0;
     do_busid_cmd(s, s->cmdbuf, 0);
@@ -357,9 +354,6 @@ static void handle_s_without_atn(ESPState *s)
 
 static void satn_stop_pdma_cb(ESPState *s)
 {
-    if (esp_select(s) < 0) {
-        return;
-    }
     //fprintf(stderr, "### DOCMD5!\n");
     if (s->cmdlen) {
         trace_esp_handle_satn_stop(s->cmdlen);
