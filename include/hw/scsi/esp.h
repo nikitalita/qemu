@@ -15,11 +15,6 @@ typedef void (*ESPDMAMemoryReadWriteFunc)(void *opaque, uint8_t *buf, int len);
 
 typedef struct ESPState ESPState;
 
-enum pdma_origin_id {
-    TI,
-    ASYNC,
-};
-
 struct ESPState {
     uint8_t rregs[ESP_REGS];
     uint8_t wregs[ESP_REGS];
@@ -41,11 +36,6 @@ struct ESPState {
     uint32_t cmdlen;
     uint32_t do_cmd;
 
-    /* The amount of data left in the current DMA transfer.  */
-    uint32_t dma_left;
-    /* The size of the current DMA transfer.  Zero if no transfer is in
-       progress.  */
-    uint32_t dma_counter;
     int dma_enabled;
 
     uint32_t async_len;
@@ -55,11 +45,6 @@ struct ESPState {
     ESPDMAMemoryReadWriteFunc dma_memory_write;
     void *dma_opaque;
     void (*dma_cb)(ESPState *s);
-    uint8_t pdma_buf[32];
-    int pdma_origin;
-    //uint32_t pdma_len;
-    //uint32_t pdma_start;
-    //uint32_t pdma_cur;
     void (*pdma_cb)(ESPState *s);
 };
 
