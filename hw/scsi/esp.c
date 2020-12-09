@@ -871,28 +871,6 @@ static bool esp_mem_accepts(void *opaque, hwaddr addr,
     return (size == 1) || (is_write && size == 4);
 }
 
-static bool esp_pdma_needed(void *opaque)
-{
-    ESPState *s = opaque;
-    return s->dma_memory_read == NULL && s->dma_memory_write == NULL &&
-           s->dma_enabled;
-}
-
-static const VMStateDescription vmstate_esp_pdma = {
-    .name = "esp/pdma",
-    .version_id = 1,
-    .minimum_version_id = 1,
-    .needed = esp_pdma_needed,
-    .fields = (VMStateField[]) {
-        VMSTATE_BUFFER(pdma_buf, ESPState),
-        VMSTATE_INT32(pdma_origin, ESPState),
-        //VMSTATE_UINT32(pdma_len, ESPState),
-        //VMSTATE_UINT32(pdma_start, ESPState),
-        //VMSTATE_UINT32(pdma_cur, ESPState),
-        VMSTATE_END_OF_LIST()
-    }
-};
-
 const VMStateDescription vmstate_esp = {
     .name ="esp",
     .version_id = 4,
@@ -912,12 +890,7 @@ const VMStateDescription vmstate_esp = {
         VMSTATE_BUFFER_START_MIDDLE_V(cmdbuf, ESPState, 16, 4),
         VMSTATE_UINT32(cmdlen, ESPState),
         VMSTATE_UINT32(do_cmd, ESPState),
-        VMSTATE_UINT32(dma_left, ESPState),
         VMSTATE_END_OF_LIST()
-    },
-    .subsections = (const VMStateDescription * []) {
-        &vmstate_esp_pdma,
-        NULL
     }
 };
 
