@@ -111,27 +111,9 @@ static void esp_set_tc(ESPState *s, uint32_t dmalen);
 static uint8_t esp_pdma_read(ESPState *s)
 {
     //int dmalen = esp_get_tc(s);
-    uint8_t val = 0;
-
-    switch (s->pdma_origin) {
-    case TI:
-        val = s->ti_buf[s->ti_rptr++];
-        break;
-    case ASYNC:
-        val = s->async_buf[0];
-        if (s->async_len > 0) {
-            s->async_len--;
-            s->async_buf++;
-        }
-        break;
-    default:
-        g_assert_not_reached();
-    }
+    uint8_t val = s->ti_buf[s->ti_rptr++];
 
     s->ti_size--;
-    //dmalen--;
-    //esp_set_tc(s, dmalen);
-
     return val;
 }
 
@@ -143,23 +125,10 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
         return;
     }
 
-    switch (s->pdma_origin) {
-    case TI:
-        if (s->do_cmd) {
-            s->cmdbuf[s->cmdlen++] = val;
-        } else {
-            s->ti_buf[s->ti_wptr++] = val;
-        }
-        break;
-    case ASYNC:
-        s->async_buf[0] = val;
-        if (s->async_len > 0) {
-            s->async_len--;
-            s->async_buf++;
-        }
-        break;
-    default:
-        g_assert_not_reached();
+    if (s->do_cmd) {
+        s->cmdbuf[s->cmdlen++] = val;
+    } else {
+        s->ti_buf[s->ti_wptr++] = val;
     }
 
     s->ti_size++;
