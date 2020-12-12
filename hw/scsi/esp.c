@@ -548,12 +548,8 @@ static void esp_do_dma(ESPState *s)
             s->async_len -= len;
             esp_set_tc(s, esp_get_tc(s) - len);
             s->pdma_cb = do_dma_pdma_cb;
-            if (len < TI_BUFSZ) {
-                /* It seems that smaller transfers are padded up to the FIFO
-                 * length */
-                s->ti_wptr = TI_BUFSZ;
-                esp_set_tc(s, 0);
-            }
+            /* Indicate transfer to FIFO is complete */
+            s->rregs[ESP_RSTAT] |= STAT_TC;
             esp_raise_drq(s);
             return;
         }
@@ -766,7 +762,10 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
         }
         break;
     case ESP_RFLAGS:
-        val = s->ti_wptr - s->ti_rptr;
+        /* FIXME: indicate that FIFO is full, since MacOS will always fill
+         * the entire FIFO regardless of transfer size, and checks this
+         * register to ensure the FIFO is full */
+        val = (s->ti_wptr ? TI_BUFSZ : 0);
         break;
     default:
         val = s->rregs[saddr];
