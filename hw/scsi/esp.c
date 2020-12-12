@@ -546,9 +546,14 @@ static void esp_do_dma(ESPState *s)
             s->ti_wptr += len;
             s->async_buf += len;
             s->async_len -= len;
-            s->ti_size += len;
             esp_set_tc(s, esp_get_tc(s) - len);
             s->pdma_cb = do_dma_pdma_cb;
+            if (len < TI_BUFSZ) {
+                /* It seems that smaller transfers are padded up to the FIFO
+                 * length */
+                s->ti_wptr = TI_BUFSZ;
+                esp_set_tc(s, 0);
+            }
             esp_raise_drq(s);
             return;
         }
@@ -661,43 +666,33 @@ static void handle_ti(ESPState *s)
         //fprintf(stderr, "### DOCMD1!\n");
         do_cmd(s, s->cmdbuf);
     } else {
-        fprintf(stderr, "##### to_device %d, phase %x\n", to_device, s->rregs[ESP_RSTAT] & 7);
-        
         if (to_device) {
             assert(0);
         } else {
-        
-        fprintf(stderr, "##### async_len is %d\n", s->async_len);
-        fprintf(stderr, "##### ti_size is %d, TC is %d\n", s->ti_size, esp_get_tc(s));
-        fprintf(stderr, "##### ti_wptr %d, ti_rptr %d\n", s->ti_wptr, s->ti_rptr);
-        //esp_raise_irq(s);
+            len = s->ti_size;
+            if (len > s->async_len) {
+                len = s->async_len;
+            }
 
-        len = s->ti_size;
-        //if (len > s->async_len) {
-        //    len = s->async_len;
-        //}
-
-        s->ti_rptr = 0;
-        s->ti_wptr = 0;
+            s->ti_rptr = 0;
+            s->ti_wptr = 0;
             assert(s->ti_wptr == 0 && s->ti_rptr == 0);
             len = MIN(len, TI_BUFSZ - s->ti_wptr);
-
-            fprintf(stderr, "===== len is %d\n", len);
             memcpy(&s->ti_buf[s->ti_wptr], s->async_buf, len);
             s->ti_size -= len;
             s->ti_wptr += len;
             s->async_buf += len;
             s->async_len -= len;
 
-        if (s->ti_size == 0) {
-            scsi_req_continue(s->current_req);
-            
-            if (esp_get_tc(s) == 0) {
-            esp_dma_done(s);
+            if (s->async_len == 0) {
+                scsi_req_continue(s->current_req);
+
+                if (s->ti_size > 0) {
+                    return;
+                }
             }
-            return;
-        }
-        esp_raise_irq(s);
+
+            esp_raise_irq(s);
         }
     }
 }
