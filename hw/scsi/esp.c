@@ -626,6 +626,8 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
 static void handle_ti(ESPState *s)
 {
     uint32_t dmalen;
+    int to_device = ((s->rregs[ESP_RSTAT] & 7) == STAT_DO);
+    int len;
 
     if (s->dma && !s->dma_enabled) {
         s->dma_cb = handle_ti;
@@ -643,7 +645,30 @@ static void handle_ti(ESPState *s)
         s->cmdlen = 0;
         s->do_cmd = 0;
         do_cmd(s, s->cmdbuf);
-    }
+    } else {
+        fprintf(stderr, "##### to_device %d\n", to_device);
+        fprintf(stderr, "##### async_len is %d\n", s->async_len);
+        fprintf(stderr, "##### ti_size is %d, TC is %d\n", s->ti_size, esp_get_tc(s));
+        fprintf(stderr, "##### ti_wptr %d, ti_rptr %d\n", s->ti_wptr, s->ti_rptr);
+        //esp_raise_irq(s);
+        s->ti_rptr = 0;
+        s->ti_wptr = 0;
+            assert(s->ti_wptr == 0 && s->ti_rptr == 0);
+            len = MIN(s->ti_size, TI_BUFSZ - s->ti_wptr);
+            fprintf(stderr, "===== len is %d\n", len);
+            memcpy(&s->ti_buf[s->ti_wptr], s->async_buf, len);
+            s->ti_size -= len;
+            s->ti_wptr += len;
+            s->async_buf += len;
+            s->async_len -= len;
+
+        if (s->ti_size == 0) {
+            scsi_req_continue(s->current_req);
+            esp_dma_done(s);
+            return;
+        }
+        esp_raise_irq(s);
+     }
 }
 
 void esp_hard_reset(ESPState *s)
