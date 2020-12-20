@@ -730,6 +730,12 @@ uint64_t esp_reg_read(ESPState *s, uint32_t saddr)
             val = s->rregs[saddr];
         }
         break;
+     case ESP_RFLAGS:
+        /* FIXME: indicate that FIFO is full, since MacOS will always fill
+         * the entire FIFO regardless of transfer size, and checks this
+         * register to ensure the FIFO is full */
+        val = (s->ti_wptr ? TI_BUFSZ : 0);
+        break;
     default:
         val = s->rregs[saddr];
         break;
