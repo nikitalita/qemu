@@ -249,7 +249,6 @@ static void do_busid_cmd(ESPState *s, uint8_t *buf, uint8_t busid)
     }
     s->rregs[ESP_RINTR] = INTR_BS | INTR_FC;
     s->rregs[ESP_RSEQ] = SEQ_CD;
-    esp_raise_irq(s);
 }
 
 static void do_cmd(ESPState *s, uint8_t *buf)
@@ -611,8 +610,10 @@ void esp_transfer_data(SCSIRequest *req, uint32_t len)
     trace_esp_transfer_data(dmalen, s->ti_size);
     s->async_len = len;
     s->async_buf = scsi_req_get_buf(req);
-    if (dmalen) {
+
+    if (s->ti_size) {
         esp_do_dma(s);
+        esp_raise_irq(s);
     } else if (to_device) {
         /*
          * If this was the last part of a DMA transfer then the
