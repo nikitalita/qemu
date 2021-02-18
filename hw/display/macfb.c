@@ -11,10 +11,12 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/timer.h"
 #include "qemu/units.h"
 #include "hw/sysbus.h"
 #include "ui/console.h"
 #include "ui/pixel_ops.h"
+#include "hw/irq.h"
 #include "hw/nubus/nubus.h"
 #include "hw/display/macfb.h"
 #include "qapi/error.h"
@@ -272,6 +274,31 @@ static void macfb_update_display(void *opaque)
     macfb_draw_graphic(s);
 }
 
+static void macfb_update_irq(MacfbState *s)
+{
+    uint32_t irq_state = s->irq_state & s->irq_mask;
+
+    if (irq_state) {
+        qemu_irq_raise(s->irq);
+    } else {
+        qemu_irq_lower(s->irq);
+    }
+}
+
+static void macfb_vbl_timer(void *opaque)
+{
+    MacfbState *s = opaque;
+    int64_t next_vbl;
+
+    s->irq_state |= 0x4;
+    macfb_update_irq(s);
+
+    /* 60 Hz irq */
+    next_vbl = (qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 16630000) /
+                16630000 * 16630000;
+    timer_mod(s->vbl_timer, next_vbl);
+}
+
 static void macfb_reset(MacfbState *s)
 {
     int i;
@@ -303,7 +330,7 @@ static uint64_t macfb_ctrl_read(void *opaque,
         // During early video init MacOS sits in a busy loop waiting
         // for this bit to be set. Some kind of interrupt? Is this related
         // to VIA VBL?
-        val |= 0x4;
+        val = s->irq_state;
         break;
     }
 
@@ -317,13 +344,31 @@ static void macfb_ctrl_write(void *opaque,
                              unsigned int size)
 {
     MacfbState *s = opaque;
+    int64_t next_vbl;
     int i;
 
     switch (addr) {
-    case 0x0 ... DAFB_RESET - 1:
+    case 0x0 ... 0x103:
+    case 0x110 ... DAFB_RESET - 1:
         for (i = 0; i < size; i++) {
            s->regs[addr + i] = val >> (24 - (i << 3)) & 0xff;
         }
+        break;
+    case 0x104:
+        // Interrupt mask?
+        s->irq_mask = val;
+        if (val & 4) {
+            next_vbl = (qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 16630000) /
+                       16630000 * 16630000;
+            timer_mod(s->vbl_timer, next_vbl);
+        } else {
+            timer_del(s->vbl_timer);
+        }
+        break;
+    case 0x10c:
+        // Interrupt clear?
+        s->irq_state &= ~0x4;
+        macfb_update_irq(s);
         break;
     case DAFB_RESET:
         s->palette_current = 0;
@@ -419,6 +464,9 @@ static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
     s->vram_bit_mask = MACFB_VRAM_SIZE - 1;
     vmstate_register_ram(&s->mem_vram, dev);
     memory_region_set_coalescing(&s->mem_vram);
+
+    s->vbl_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, macfb_vbl_timer, s);
+    qdev_init_gpio_out(dev, &s->irq, 1);
 }
 
 static void macfb_sysbus_realize(DeviceState *dev, Error **errp)

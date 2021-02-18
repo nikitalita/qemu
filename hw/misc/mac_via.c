@@ -1022,6 +1022,7 @@ static void mac_via_realize(DeviceState *dev, Error **errp)
     /* Pass through mos6522 input IRQs */
     qdev_pass_gpios(DEVICE(&m->mos6522_via1), dev, "via1-irq");
     qdev_pass_gpios(DEVICE(&m->mos6522_via2), dev, "via2-irq");
+    qdev_pass_gpios(DEVICE(&m->mos6522_via2), dev, "via2-slot-irq");
 
     /* VIA 1 */
     m->mos6522_via1.one_second_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
@@ -1223,12 +1224,31 @@ static void mos6522_q800_via2_reset(DeviceState *dev)
 
     ms->dirb = 0;
     ms->b = 0;
+    ms->dira = 0;
+    ms->a = 0x7f;
+}
+
+static void via2_slot_irq_request(void *opaque, int irq, int level)
+{
+    MOS6522Q800VIA2State *v2s = opaque;
+    MOS6522State *s = MOS6522(v2s);
+
+    if (level) {
+        /* These are active LOW */
+        s->a &= ~(1 << irq);
+    } else {
+        s->a |= (1 << irq);
+    }
+
+    via2_irq_request(v2s, VIA2_IRQ_SLOT_BIT, level);
 }
 
 static void mos6522_q800_via2_init(Object *obj)
 {
     qdev_init_gpio_in_named(DEVICE(obj), via2_irq_request, "via2-irq",
                             VIA2_IRQ_NB);
+    qdev_init_gpio_in_named(DEVICE(obj), via2_slot_irq_request, "via2-slot-irq",
+                            VIA2_SLOT_IRQ_NB);
 }
 
 static void mos6522_q800_via2_class_init(ObjectClass *oc, void *data)

@@ -16,6 +16,7 @@
 #include "exec/memory.h"
 #include "ui/console.h"
 #include "qom/object.h"
+#include "qemu/timer.h"
 
 typedef struct MacfbState {
     MemoryRegion macfb;
@@ -30,6 +31,11 @@ typedef struct MacfbState {
     uint8_t regs[0x400];
     uint32_t width, height; /* in pixels */
     uint8_t depth;
+
+    uint32_t irq_state;
+    uint32_t irq_mask;
+    QEMUTimer *vbl_timer;
+    qemu_irq irq;
 } MacfbState;
 
 #define TYPE_MACFB "sysbus-macfb"
