@@ -313,6 +313,106 @@ static void macfb_reset(MacfbState *s)
     macfb_invalidate_display(s);
 }
 
+/*
+ * Quadra sense codes taken from Apple Technical Note HW26:
+ * "Macintosh Quadra Built-In Video". The sense codes and
+ * extended sense codes have different meanings:
+ *
+ * Sense:
+ *    bit 2: SENSE2 (pin 10)
+ *    bit 1: SENSE1 (pin 7)
+ *    bit 0: SENSE0 (pin 4)
+ *
+ * 0 = pin tied to ground
+ * 1 = pin unconnected
+ *
+ * Extended Sense:
+ *    bit 2: pins 4-10
+ *    bit 1: pins 10-7
+ *    bit 0: pins 7-4
+ *
+ * 0 = pins tied together
+ * 1 = pins unconnected
+ *
+ * Reads from the sense register appear to be active low, i.e. a 1 indicates
+ * that the pin is tied to ground, a 0 indicates the pin is disconnected.
+ *
+ * Writes to the sense register appear to activate pulldowns i.e. a 1 enables
+ * a pulldown on a particular pin.
+ *
+ * The MacOS toolbox appears to use a series of reads and writes to first
+ * determine if extended sense is to be used, and then check which pins are
+ * tied together in order to determine the display type.
+ */
+
+typedef struct MacFbSense {
+    uint8_t type;
+    uint8_t sense;
+    uint8_t ext_sense;
+} MacFbSense;
+
+static MacFbSense macfb_sense_table[] = {
+    { MACFB_DISPLAY_APPLE_21_COLOR, 0x0, 0 },
+    { MACFB_DISPLAY_APPLE_PORTRAIT, 0x1, 0 },
+    { MACFB_DISPLAY_APPLE_12_RGB, 0x2, 0 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 0x3, 0 },
+    { MACFB_DISPLAY_NTSC_UNDERSCAN, 0x4, 0 },
+    { MACFB_DISPLAY_NTSC_OVERSCAN, 0x4, 0 },
+    { MACFB_DISPLAY_APPLE_12_MONO, 0x6, 0 },
+    { MACFB_DISPLAY_APPLE_13_RGB, 0x6, 0 },
+    { MACFB_DISPLAY_16_COLOR, 0x7, 0x3 },
+    { MACFB_DISPLAY_PAL1_UNDERSCAN, 0x7, 0x0 },
+    { MACFB_DISPLAY_PAL1_OVERSCAN, 0x7, 0x0 },
+    { MACFB_DISPLAY_PAL2_UNDERSCAN, 0x7, 0x6 },
+    { MACFB_DISPLAY_PAL2_OVERSCAN, 0x7, 0x6 },
+    { MACFB_DISPLAY_VGA, 0x7, 0x5 },
+    { MACFB_DISPLAY_SVGA, 0x7, 0x5 },
+};
+
+static uint32_t macfb_sense_read(MacfbState *s)
+{
+    MacFbSense *macfb_sense;
+    uint8_t sense;
+
+    macfb_sense = &macfb_sense_table[s->type];
+    if (macfb_sense->sense == 0x7) {
+        /* Extended sense */
+        sense = 0;
+        if (!(macfb_sense->ext_sense & 1)) {
+            /* Pins 7-4 together */
+            if (~s->sense & 3) {
+                sense = (~s->sense & 7) | 3;
+            }
+        }
+        if (!(macfb_sense->ext_sense & 2)) {
+            /* Pins 10-7 together */
+            if (~s->sense & 6) {
+                sense = (~s->sense & 7) | 6;
+            }
+        }
+        if (!(macfb_sense->ext_sense & 4)) {
+            /* Pins 4-10 together */
+            if (~s->sense & 5) {
+                sense = (~s->sense & 7) | 5;
+            }
+        }
+    } else {
+        /* Normal sense */
+        sense = (~macfb_sense->sense & 7) | (~s->sense & 7);
+    }
+
+    trace_macfb_sense_read(sense);
+    return sense;
+}
+
+static void macfb_sense_write(MacfbState *s, uint32_t val)
+{
+    s->sense = val;
+
+    trace_macfb_sense_write(val);
+    return;
+}
+
 static uint64_t macfb_ctrl_read(void *opaque,
                                 hwaddr addr,
                                 unsigned int size)
@@ -332,6 +432,9 @@ static uint64_t macfb_ctrl_read(void *opaque,
         // to VIA VBL?
         val = s->irq_state;
         break;
+    case 0x1c:
+        return macfb_sense_read(s);
+        break;
     }
 
     trace_macfb_ctrl_read(addr, val, size);
@@ -348,11 +451,15 @@ static void macfb_ctrl_write(void *opaque,
     int i;
 
     switch (addr) {
-    case 0x0 ... 0x103:
+    case 0x0 ... 0x1b:
+    case 0x20 ... 0x103:
     case 0x110 ... DAFB_RESET - 1:
         for (i = 0; i < size; i++) {
            s->regs[addr + i] = val >> (24 - (i << 3)) & 0xff;
         }
+        break;
+    case 0x1c:
+        macfb_sense_write(s, val);
         break;
     case 0x104:
         // Interrupt mask?
@@ -514,6 +621,7 @@ static Property macfb_sysbus_properties[] = {
     DEFINE_PROP_UINT32("width", MacfbSysBusState, macfb.width, 640),
     DEFINE_PROP_UINT32("height", MacfbSysBusState, macfb.height, 480),
     DEFINE_PROP_UINT8("depth", MacfbSysBusState, macfb.depth, 8),
+    DEFINE_PROP_UINT8("display", MacfbSysBusState, macfb.type, MACFB_DISPLAY_VGA),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -521,6 +629,7 @@ static Property macfb_nubus_properties[] = {
     DEFINE_PROP_UINT32("width", MacfbNubusState, macfb.width, 640),
     DEFINE_PROP_UINT32("height", MacfbNubusState, macfb.height, 480),
     DEFINE_PROP_UINT8("depth", MacfbNubusState, macfb.depth, 8),
+    DEFINE_PROP_UINT8("display", MacfbNubusState, macfb.type, MACFB_DISPLAY_VGA),
     DEFINE_PROP_END_OF_LIST(),
 };
 

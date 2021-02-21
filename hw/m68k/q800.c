@@ -436,6 +436,7 @@ static void q800_init(MachineState *machine)
     qdev_prop_set_uint32(dev, "width", graphic_width);
     qdev_prop_set_uint32(dev, "height", graphic_height);
     qdev_prop_set_uint8(dev, "depth", graphic_depth);
+    qdev_prop_set_uint8(dev, "display", MACFB_DISPLAY_VGA);
     qdev_realize_and_unref(dev, BUS(nubus), &error_fatal);
     qdev_connect_gpio_out(dev, 0,
                           qdev_get_gpio_in_named(via_dev, "via2-slot-irq",

@@ -18,6 +18,24 @@
 #include "qom/object.h"
 #include "qemu/timer.h"
 
+typedef enum  {
+    MACFB_DISPLAY_APPLE_21_COLOR = 0,
+    MACFB_DISPLAY_APPLE_PORTRAIT = 1,
+    MACFB_DISPLAY_APPLE_12_RGB = 2,
+    MACFB_DISPLAY_APPLE_2PAGE_MONO = 3,
+    MACFB_DISPLAY_NTSC_UNDERSCAN = 4,
+    MACFB_DISPLAY_NTSC_OVERSCAN = 5,
+    MACFB_DISPLAY_APPLE_12_MONO = 6,
+    MACFB_DISPLAY_APPLE_13_RGB = 7,
+    MACFB_DISPLAY_16_COLOR = 8,
+    MACFB_DISPLAY_PAL1_UNDERSCAN = 9,
+    MACFB_DISPLAY_PAL1_OVERSCAN = 10,
+    MACFB_DISPLAY_PAL2_UNDERSCAN = 11,
+    MACFB_DISPLAY_PAL2_OVERSCAN = 12,
+    MACFB_DISPLAY_VGA = 13,
+    MACFB_DISPLAY_SVGA = 14,
+} MacfbDisplayType;
+
 typedef struct MacfbState {
     MemoryRegion macfb;
     MemoryRegion mem_vram;
@@ -31,6 +49,8 @@ typedef struct MacfbState {
     uint8_t regs[0x400];
     uint32_t width, height; /* in pixels */
     uint8_t depth;
+    uint8_t type;
+    uint32_t sense;
 
     uint32_t irq_state;
     uint32_t irq_mask;
