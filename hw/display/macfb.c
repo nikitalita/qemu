@@ -24,7 +24,7 @@
 #include "migration/vmstate.h"
 #include "trace.h"
 
-#define VIDEO_BASE 0x00001000
+#define VIDEO_BASE 0x0
 #define DAFB_BASE  0x00800000
 
 #define MACFB_PAGE_SIZE 4096
@@ -32,6 +32,72 @@
 
 #define DAFB_RESET      0x200
 #define DAFB_LUT        0x213
+
+
+/*
+ * Quadra sense codes taken from Apple Technical Note HW26:
+ * "Macintosh Quadra Built-In Video". The sense codes and
+ * extended sense codes have different meanings:
+ *
+ * Sense:
+ *    bit 2: SENSE2 (pin 10)
+ *    bit 1: SENSE1 (pin 7)
+ *    bit 0: SENSE0 (pin 4)
+ *
+ * 0 = pin tied to ground
+ * 1 = pin unconnected
+ *
+ * Extended Sense:
+ *    bit 2: pins 4-10
+ *    bit 1: pins 10-7
+ *    bit 0: pins 7-4
+ *
+ * 0 = pins tied together
+ * 1 = pins unconnected
+ *
+ * Reads from the sense register appear to be active low, i.e. a 1 indicates
+ * that the pin is tied to ground, a 0 indicates the pin is disconnected.
+ *
+ * Writes to the sense register appear to activate pulldowns i.e. a 1 enables
+ * a pulldown on a particular pin.
+ *
+ * The MacOS toolbox appears to use a series of reads and writes to first
+ * determine if extended sense is to be used, and then check which pins are
+ * tied together in order to determine the display type.
+ */
+
+typedef struct MacFbSense {
+    uint8_t type;
+    uint8_t sense;
+    uint8_t ext_sense;
+} MacFbSense;
+
+static MacFbSense macfb_sense_table[] = {
+    { MACFB_DISPLAY_APPLE_21_COLOR, 0x0, 0 },
+    { MACFB_DISPLAY_APPLE_PORTRAIT, 0x1, 0 },
+    { MACFB_DISPLAY_APPLE_12_RGB, 0x2, 0 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 0x3, 0 },
+    { MACFB_DISPLAY_NTSC_UNDERSCAN, 0x4, 0 },
+    { MACFB_DISPLAY_NTSC_OVERSCAN, 0x4, 0 },
+    { MACFB_DISPLAY_APPLE_12_MONO, 0x6, 0 },
+    { MACFB_DISPLAY_APPLE_13_RGB, 0x6, 0 },
+    { MACFB_DISPLAY_16_COLOR, 0x7, 0x3 },
+    { MACFB_DISPLAY_PAL1_UNDERSCAN, 0x7, 0x0 },
+    { MACFB_DISPLAY_PAL1_OVERSCAN, 0x7, 0x0 },
+    { MACFB_DISPLAY_PAL2_UNDERSCAN, 0x7, 0x6 },
+    { MACFB_DISPLAY_PAL2_OVERSCAN, 0x7, 0x6 },
+    { MACFB_DISPLAY_VGA, 0x7, 0x5 },
+    { MACFB_DISPLAY_SVGA, 0x7, 0x5 },
+};
+
+static MacFbMode macfb_mode_table[] = {
+    { MACFB_DISPLAY_VGA, 1, 0x71e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 2, 0x70e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 4, 0x706, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 8, 0x702, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 1, 0x706, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 2, 0x702, 1152, 870, 0x240, 0x80 },
+};
 
 
 typedef void macfb_draw_line_func(MacfbState *s, uint8_t *d, uint32_t addr,
@@ -190,7 +256,7 @@ static void macfb_draw_graphic(MacfbState *s)
     ram_addr_t page;
     uint32_t v = 0;
     int y, ymin;
-    int macfb_stride = (s->depth * s->width + 7) / 8;
+    int macfb_stride = s->mode->stride;
     macfb_draw_line_func *macfb_draw_line;
 
     switch (s->depth) {
@@ -222,7 +288,7 @@ static void macfb_draw_graphic(MacfbState *s)
                                              DIRTY_MEMORY_VGA);
 
     ymin = -1;
-    page = 0;
+    page = s->mode->offset;
     for (y = 0; y < s->height; y++, page += macfb_stride) {
         if (macfb_check_dirty(s, snap, page, macfb_stride)) {
             uint8_t *data_display;
@@ -274,6 +340,13 @@ static void macfb_update_display(void *opaque)
     macfb_draw_graphic(s);
 }
 
+static void macfb_update_mode(MacfbState *s)
+{
+    fprintf(stderr, "#### setting display to depth %d\n", s->mode->depth);
+    s->depth = s->mode->depth;
+    macfb_invalidate_display(s);
+}
+
 static void macfb_update_irq(MacfbState *s)
 {
     uint32_t irq_state = s->irq_state & s->irq_mask;
@@ -301,6 +374,7 @@ static void macfb_vbl_timer(void *opaque)
 
 static void macfb_reset(MacfbState *s)
 {
+    MacFbMode *macfb_mode;
     int i;
 
     s->palette_current = 0;
@@ -310,64 +384,20 @@ static void macfb_reset(MacfbState *s)
         s->color_palette[i * 3 + 2] = 255 - i;
     }
     memset(s->vram, 0, MACFB_VRAM_SIZE);
-    macfb_invalidate_display(s);
+
+    /* Choose first mode to match the display type */
+    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
+        macfb_mode = &macfb_mode_table[i];
+
+        if (s->type != macfb_mode->type) {
+            continue;
+        }
+
+        s->mode = macfb_mode;
+        break;
+    }
+    macfb_update_mode(s);
 }
-
-/*
- * Quadra sense codes taken from Apple Technical Note HW26:
- * "Macintosh Quadra Built-In Video". The sense codes and
- * extended sense codes have different meanings:
- *
- * Sense:
- *    bit 2: SENSE2 (pin 10)
- *    bit 1: SENSE1 (pin 7)
- *    bit 0: SENSE0 (pin 4)
- *
- * 0 = pin tied to ground
- * 1 = pin unconnected
- *
- * Extended Sense:
- *    bit 2: pins 4-10
- *    bit 1: pins 10-7
- *    bit 0: pins 7-4
- *
- * 0 = pins tied together
- * 1 = pins unconnected
- *
- * Reads from the sense register appear to be active low, i.e. a 1 indicates
- * that the pin is tied to ground, a 0 indicates the pin is disconnected.
- *
- * Writes to the sense register appear to activate pulldowns i.e. a 1 enables
- * a pulldown on a particular pin.
- *
- * The MacOS toolbox appears to use a series of reads and writes to first
- * determine if extended sense is to be used, and then check which pins are
- * tied together in order to determine the display type.
- */
-
-typedef struct MacFbSense {
-    uint8_t type;
-    uint8_t sense;
-    uint8_t ext_sense;
-} MacFbSense;
-
-static MacFbSense macfb_sense_table[] = {
-    { MACFB_DISPLAY_APPLE_21_COLOR, 0x0, 0 },
-    { MACFB_DISPLAY_APPLE_PORTRAIT, 0x1, 0 },
-    { MACFB_DISPLAY_APPLE_12_RGB, 0x2, 0 },
-    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 0x3, 0 },
-    { MACFB_DISPLAY_NTSC_UNDERSCAN, 0x4, 0 },
-    { MACFB_DISPLAY_NTSC_OVERSCAN, 0x4, 0 },
-    { MACFB_DISPLAY_APPLE_12_MONO, 0x6, 0 },
-    { MACFB_DISPLAY_APPLE_13_RGB, 0x6, 0 },
-    { MACFB_DISPLAY_16_COLOR, 0x7, 0x3 },
-    { MACFB_DISPLAY_PAL1_UNDERSCAN, 0x7, 0x0 },
-    { MACFB_DISPLAY_PAL1_OVERSCAN, 0x7, 0x0 },
-    { MACFB_DISPLAY_PAL2_UNDERSCAN, 0x7, 0x6 },
-    { MACFB_DISPLAY_PAL2_OVERSCAN, 0x7, 0x6 },
-    { MACFB_DISPLAY_VGA, 0x7, 0x5 },
-    { MACFB_DISPLAY_SVGA, 0x7, 0x5 },
-};
 
 static uint32_t macfb_sense_read(MacfbState *s)
 {
@@ -413,19 +443,45 @@ static void macfb_sense_write(MacfbState *s, uint32_t val)
     return;
 }
 
+static void macfb_mode_write(MacfbState *s, uint32_t val)
+{
+    MacFbMode *macfb_mode;
+    int i;
+
+    s->modeval = val;
+    if (val == 0) {
+        return;
+    }
+
+    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
+        macfb_mode = &macfb_mode_table[i];
+
+        if (s->type != macfb_mode->type) {
+            continue;
+        }
+
+        if ((val & 0xff) == (macfb_mode->modeval & 0xff)) {
+            s->mode = macfb_mode;
+            macfb_update_mode(s);
+            break;
+        }
+    }
+}
+
 static uint64_t macfb_ctrl_read(void *opaque,
                                 hwaddr addr,
                                 unsigned int size)
 {
     MacfbState *s = opaque;
     uint64_t val = 0;
-    int i;
 
-    for (i = 0; i < size; i++) {
-        val |= s->regs[addr + i] << (24 - (i << 3));
-    }
+    val = s->regs[addr >> 2] >> ((4 - ((addr & 3) + size)) << 3);
+    val &= (1UL << (size << 3)) - 1;
 
     switch (addr) {
+    case 0xc:
+        val = s->modeval;
+        break;
     case 0x108:
         // During early video init MacOS sits in a busy loop waiting
         // for this bit to be set. Some kind of interrupt? Is this related
@@ -433,11 +489,13 @@ static uint64_t macfb_ctrl_read(void *opaque,
         val = s->irq_state;
         break;
     case 0x1c:
-        return macfb_sense_read(s);
+        val = macfb_sense_read(s);
         break;
     }
 
-    trace_macfb_ctrl_read(addr, val, size);
+    if (addr != 0x108) {
+        trace_macfb_ctrl_read(addr, val, size);
+    }
     return val;
 }
 
@@ -447,16 +505,13 @@ static void macfb_ctrl_write(void *opaque,
                              unsigned int size)
 {
     MacfbState *s = opaque;
+    uint64_t oldval;
     int64_t next_vbl;
-    int i;
 
     switch (addr) {
-    case 0x0 ... 0x1b:
-    case 0x20 ... 0x103:
-    case 0x110 ... DAFB_RESET - 1:
-        for (i = 0; i < size; i++) {
-           s->regs[addr + i] = val >> (24 - (i << 3)) & 0xff;
-        }
+    case 0xc ... 0xf:
+        fprintf(stderr, "@@@@@@@ writing val 0x%lx\n", val);
+        macfb_mode_write(s, val);
         break;
     case 0x1c:
         macfb_sense_write(s, val);
@@ -479,6 +534,8 @@ static void macfb_ctrl_write(void *opaque,
         break;
     case DAFB_RESET:
         s->palette_current = 0;
+        s->irq_state &= ~0x4;
+        macfb_update_irq(s);
         break;
     case DAFB_LUT:
         s->color_palette[s->palette_current++] = val;
@@ -486,9 +543,30 @@ static void macfb_ctrl_write(void *opaque,
             macfb_invalidate_display(s);
         }
         break;
+    default:
+        //s->regs[addr >> 2] = 0x11223344;
+        oldval = s->regs[addr >> 2];
+        
+        //size = 1
+        //size = 7
+        
+        //size = 2
+        //size = 65535
+        
+        //size = 4
+        //size = 
+        
+        //fprintf(stderr, "oldval before is 0x%lx\n", oldval);
+        oldval &= ~(((1UL << (size << 3)) - 1) << (1UL << ((4 - ((addr & 3) + size)) << 3))); 
+        //fprintf(stderr, "oldval after1 is 0x%lx\n", oldval);
+        oldval |= (val << ((4 - ((addr & 3) + size)) << 3));
+        //fprintf(stderr, "oldval after2 is 0x%lx\n", oldval);
+        s->regs[addr >> 2] = oldval;
     }
 
-    trace_macfb_ctrl_write(addr, val, size);
+    if (addr != 0x10c) {
+        trace_macfb_ctrl_write(addr, val, size);
+    }
 }
 
 static const MemoryRegionOps macfb_ctrl_ops = {

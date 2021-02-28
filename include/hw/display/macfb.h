@@ -36,6 +36,16 @@ typedef enum  {
     MACFB_DISPLAY_SVGA = 14,
 } MacfbDisplayType;
 
+typedef struct MacFbMode {
+    uint8_t type;
+    uint8_t depth;
+    uint32_t modeval;
+    uint32_t width;
+    uint32_t height;
+    uint32_t stride;
+    uint32_t offset;
+} MacFbMode;
+
 typedef struct MacfbState {
     MemoryRegion macfb;
     MemoryRegion mem_vram;
@@ -46,11 +56,13 @@ typedef struct MacfbState {
     uint32_t vram_bit_mask;
     uint32_t palette_current;
     uint8_t color_palette[256 * 3];
-    uint8_t regs[0x400];
+    uint32_t regs[0x100];
     uint32_t width, height; /* in pixels */
     uint8_t depth;
     uint8_t type;
     uint32_t sense;
+    uint32_t modeval;
+    MacFbMode *mode;
 
     uint32_t irq_state;
     uint32_t irq_mask;
