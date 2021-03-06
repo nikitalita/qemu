@@ -91,12 +91,20 @@ static MacFbSense macfb_sense_table[] = {
 };
 
 static MacFbMode macfb_mode_table[] = {
-    { MACFB_DISPLAY_VGA, 1, 0x71e, 640, 480, 0x400, 0x1000 },
-    { MACFB_DISPLAY_VGA, 2, 0x70e, 640, 480, 0x400, 0x1000 },
-    { MACFB_DISPLAY_VGA, 4, 0x706, 640, 480, 0x400, 0x1000 },
-    { MACFB_DISPLAY_VGA, 8, 0x702, 640, 480, 0x400, 0x1000 },
-    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 1, 0x706, 1152, 870, 0x240, 0x80 },
-    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 2, 0x702, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_VGA, 1, 0x100, 0x71e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 2, 0x100, 0x70e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 4, 0x100, 0x706, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 8, 0x100, 0x702, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 1, 0xd0 , 0x70e, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 2, 0xd0 , 0x706, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 4, 0xd0 , 0x702, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 8, 0xd0,  0x700, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 1, 0x90, 0x706, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 2, 0x90, 0x702, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 1, 0x90, 0x506, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 2, 0x90, 0x502, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 4, 0x90, 0x500, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 8, 0x120, 0x5ff, 1152, 870, 0x480, 0x80 },
 };
 
 
@@ -385,7 +393,7 @@ static void macfb_reset(MacfbState *s)
     }
     memset(s->vram, 0, MACFB_VRAM_SIZE);
 
-    /* Choose first mode to match the display type */
+    /* Choose first mode to match the display type and depth */
     for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
         macfb_mode = &macfb_mode_table[i];
 
@@ -393,8 +401,10 @@ static void macfb_reset(MacfbState *s)
             continue;
         }
 
-        s->mode = macfb_mode;
-        break;
+        if (s->depth == macfb_mode->depth) {
+            s->mode = macfb_mode;
+            break;
+        }
     }
     macfb_update_mode(s);
 }
@@ -443,15 +453,10 @@ static void macfb_sense_write(MacfbState *s, uint32_t val)
     return;
 }
 
-static void macfb_mode_write(MacfbState *s, uint32_t val)
+static void macfb_mode_write(MacfbState *s)
 {
     MacFbMode *macfb_mode;
     int i;
-
-    s->modeval = val;
-    if (val == 0) {
-        return;
-    }
 
     for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
         macfb_mode = &macfb_mode_table[i];
@@ -460,7 +465,8 @@ static void macfb_mode_write(MacfbState *s, uint32_t val)
             continue;
         }
 
-        if ((val & 0xff) == (macfb_mode->modeval & 0xff)) {
+        if ((s->modeval & 0xff) == (macfb_mode->modeval & 0xff) &&
+            (s->modeval2 & 0xff) == (macfb_mode->modeval2 & 0xff)) {
             s->mode = macfb_mode;
             macfb_update_mode(s);
             break;
@@ -479,8 +485,11 @@ static uint64_t macfb_ctrl_read(void *opaque,
     val &= (1UL << (size << 3)) - 1;
 
     switch (addr) {
-    case 0xc:
+    case 0x8:
         val = s->modeval;
+        break;
+    case 0xc:
+        val = s->modeval2;
         break;
     case 0x108:
         // During early video init MacOS sits in a busy loop waiting
@@ -509,9 +518,19 @@ static void macfb_ctrl_write(void *opaque,
     int64_t next_vbl;
 
     switch (addr) {
+    case 0x8 ... 0xb:
+        fprintf(stderr, "@@@@@@@ writing modeval 0x%lx\n", val);
+        s->modeval = val;
+        if (val) {
+            macfb_mode_write(s);
+        }
+        break;
     case 0xc ... 0xf:
-        fprintf(stderr, "@@@@@@@ writing val 0x%lx\n", val);
-        macfb_mode_write(s, val);
+        fprintf(stderr, "@@@@@@@ writing modeval2 0x%lx\n", val);
+        s->modeval2 = val;
+        if (val) {
+            macfb_mode_write(s);
+        }
         break;
     case 0x1c:
         macfb_sense_write(s, val);

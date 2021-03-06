@@ -40,6 +40,7 @@ typedef struct MacFbMode {
     uint8_t type;
     uint8_t depth;
     uint32_t modeval;
+    uint32_t modeval2;
     uint32_t width;
     uint32_t height;
     uint32_t stride;
@@ -62,6 +63,7 @@ typedef struct MacfbState {
     uint8_t type;
     uint32_t sense;
     uint32_t modeval;
+    uint32_t modeval2;
     MacFbMode *mode;
 
     uint32_t irq_state;
