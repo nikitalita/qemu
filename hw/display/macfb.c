@@ -95,10 +95,12 @@ static MacFbMode macfb_mode_table[] = {
     { MACFB_DISPLAY_VGA, 2, 0x100, 0x70e, 640, 480, 0x400, 0x1000 },
     { MACFB_DISPLAY_VGA, 4, 0x100, 0x706, 640, 480, 0x400, 0x1000 },
     { MACFB_DISPLAY_VGA, 8, 0x100, 0x702, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 24, 0x100, 0x7ff, 640, 480, 0x1000, 0x1000 },
     { MACFB_DISPLAY_VGA, 1, 0xd0 , 0x70e, 800, 600, 0x340, 0xe00 },
     { MACFB_DISPLAY_VGA, 2, 0xd0 , 0x706, 800, 600, 0x340, 0xe00 },
     { MACFB_DISPLAY_VGA, 4, 0xd0 , 0x702, 800, 600, 0x340, 0xe00 },
     { MACFB_DISPLAY_VGA, 8, 0xd0,  0x700, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 24, 0x340, 0x100, 800, 600, 0xd00, 0xe00 },
     { MACFB_DISPLAY_APPLE_2PAGE_MONO, 1, 0x90, 0x706, 1152, 870, 0x240, 0x80 },
     { MACFB_DISPLAY_APPLE_2PAGE_MONO, 2, 0x90, 0x702, 1152, 870, 0x240, 0x80 },
     { MACFB_DISPLAY_APPLE_21_COLOR, 1, 0x90, 0x506, 1152, 870, 0x240, 0x80 },
@@ -220,10 +222,10 @@ static void macfb_draw_line24(MacfbState *s, uint8_t *d, uint32_t addr,
     int x;
 
     for (x = 0; x < width; x++) {
-        r = macfb_read_byte(s, addr);
-        g = macfb_read_byte(s, addr + 1);
-        b = macfb_read_byte(s, addr + 2);
-        addr += 3;
+        r = macfb_read_byte(s, addr + 1);
+        g = macfb_read_byte(s, addr + 2);
+        b = macfb_read_byte(s, addr + 3);
+        addr += 4;
 
         *(uint32_t *)d = rgb_to_pixel32(r, g, b);
         d += 4;
