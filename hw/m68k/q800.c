@@ -82,7 +82,7 @@
  * is needed by the kernel to have early display and
  * thus provided by the bootloader
  */
-#define VIDEO_BASE            0xf9001000
+#define VIDEO_BASE            0xf9000000
 
 #define MAC_CLOCK  3686418
 
@@ -219,6 +219,7 @@ static void q800_init(MachineState *machine)
     int bios_size;
     ram_addr_t initrd_base;
     int32_t initrd_size;
+    MacFbMode *macfb_mode;
     ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *initrd_filename = machine->initrd_filename;
@@ -436,11 +437,16 @@ static void q800_init(MachineState *machine)
     qdev_prop_set_uint32(dev, "width", graphic_width);
     qdev_prop_set_uint32(dev, "height", graphic_height);
     qdev_prop_set_uint8(dev, "depth", graphic_depth);
-    qdev_prop_set_uint8(dev, "display", MACFB_DISPLAY_VGA);
+    if (graphic_width == 1152 && graphic_height == 870) {
+        qdev_prop_set_uint8(dev, "display", MACFB_DISPLAY_APPLE_21_COLOR);
+    } else {
+        qdev_prop_set_uint8(dev, "display", MACFB_DISPLAY_VGA);
+    }
     qdev_realize_and_unref(dev, BUS(nubus), &error_fatal);
     qdev_connect_gpio_out(dev, 0,
                           qdev_get_gpio_in_named(via_dev, "via2-slot-irq",
                                                  VIA2_SLOT_IRQ_INTVIDEO));
+    macfb_mode = (NUBUS_MACFB(dev)->macfb).mode;
 
     cs = CPU(m->cpu);
     if (linux_boot) {
@@ -464,12 +470,12 @@ static void q800_init(MachineState *machine)
         BOOTINFO1(cs->as, parameters_base,
                   BI_MAC_MEMSIZE, ram_size >> 20); /* in MB */
         BOOTINFO2(cs->as, parameters_base, BI_MEMCHUNK, 0, ram_size);
-        BOOTINFO1(cs->as, parameters_base, BI_MAC_VADDR, VIDEO_BASE);
+        BOOTINFO1(cs->as, parameters_base,
+                  BI_MAC_VADDR, VIDEO_BASE + macfb_mode->offset);
         BOOTINFO1(cs->as, parameters_base, BI_MAC_VDEPTH, graphic_depth);
         BOOTINFO1(cs->as, parameters_base, BI_MAC_VDIM,
                   (graphic_height << 16) | graphic_width);
-        BOOTINFO1(cs->as, parameters_base, BI_MAC_VROW,
-                  (graphic_width * graphic_depth + 7) / 8);
+        BOOTINFO1(cs->as, parameters_base, BI_MAC_VROW, macfb_mode->stride);
         BOOTINFO1(cs->as, parameters_base, BI_MAC_SCCBASE, SCC_BASE);
 
         memory_region_init_ram_ptr(&m->rom, NULL, "m68k_fake_mac.rom",

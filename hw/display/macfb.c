@@ -352,7 +352,10 @@ static void macfb_update_display(void *opaque)
 
 static void macfb_update_mode(MacfbState *s)
 {
-    fprintf(stderr, "#### setting display to depth %d\n", s->mode->depth);
+    fprintf(stderr, "#### setting display to width %d, height %d, depth %d\n", s->mode->width,
+            s->mode->height, s->mode->depth);
+    s->width = s->mode->width;
+    s->height = s->mode->height;
     s->depth = s->mode->depth;
     macfb_invalidate_display(s);
 }
@@ -384,7 +387,6 @@ static void macfb_vbl_timer(void *opaque)
 
 static void macfb_reset(MacfbState *s)
 {
-    MacFbMode *macfb_mode;
     int i;
 
     s->palette_current = 0;
@@ -394,21 +396,6 @@ static void macfb_reset(MacfbState *s)
         s->color_palette[i * 3 + 2] = 255 - i;
     }
     memset(s->vram, 0, MACFB_VRAM_SIZE);
-
-    /* Choose first mode to match the display type and depth */
-    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
-        macfb_mode = &macfb_mode_table[i];
-
-        if (s->type != macfb_mode->type) {
-            continue;
-        }
-
-        if (s->depth == macfb_mode->depth) {
-            s->mode = macfb_mode;
-            break;
-        }
-    }
-    macfb_update_mode(s);
 }
 
 static uint32_t macfb_sense_read(MacfbState *s)
@@ -642,13 +629,33 @@ static const GraphicHwOps macfb_ops = {
     .gfx_update = macfb_update_display,
 };
 
+static MacFbMode *macfb_find_mode(MacfbDisplayType display_type,
+                                  uint16_t width, uint16_t height,
+                                  uint8_t depth)
+{
+    MacFbMode *macfb_mode;
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
+        macfb_mode = &macfb_mode_table[i];
+
+        if (display_type == macfb_mode->type && width == macfb_mode->width &&
+                height == macfb_mode->height && depth == macfb_mode->depth) {
+            return macfb_mode;
+        }
+    }
+
+    return NULL;
+}
+
 static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
 {
     DisplaySurface *surface;
 
-    if (s->depth != 1 && s->depth != 2 && s->depth != 4 && s->depth != 8 &&
-        s->depth != 16 && s->depth != 24) {
-        error_setg(errp, "unknown guest depth %d", s->depth);
+    s->mode = macfb_find_mode(s->type, s->width, s->height, s->depth);
+    if (!s->mode) {
+        error_setg(errp, "unknown display mode: width %d, height %d, depth %d",
+                   s->width, s->height, s->depth);
         return;
     }
 
@@ -673,6 +680,8 @@ static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
 
     s->vbl_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, macfb_vbl_timer, s);
     qdev_init_gpio_out(dev, &s->irq, 1);
+
+    macfb_update_mode(s);
 }
 
 static void macfb_sysbus_realize(DeviceState *dev, Error **errp)
