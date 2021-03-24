@@ -1368,9 +1368,9 @@ static int scsi_disk_emulate_read_toc(SCSIRequest *req, uint8_t *outbuf)
 static int scsi_disk_emulate_start_stop(SCSIDiskReq *r)
 {
     SCSIRequest *req = &r->req;
-    SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, req->dev);
-    bool start = req->cmd.buf[4] & 1;
-    bool loej = req->cmd.buf[4] & 2; /* load on start, eject on !start */
+    //SCSIDiskState *s = DO_UPCAST(SCSIDiskState, qdev, req->dev);
+    //bool start = req->cmd.buf[4] & 1;
+    //bool loej = req->cmd.buf[4] & 2; /* load on start, eject on !start */
     int pwrcnd = req->cmd.buf[4] & 0xf0;
 
     if (pwrcnd) {
@@ -1378,7 +1378,9 @@ static int scsi_disk_emulate_start_stop(SCSIDiskReq *r)
         return 0;
     }
 
+    /*
     if ((s->features & (1 << SCSI_DISK_F_REMOVABLE)) && loej) {
+
         if (!start && !s->tray_open && s->tray_locked) {
             scsi_check_condition(r,
                                  blk_is_inserted(s->qdev.conf.blk)
@@ -1392,6 +1394,7 @@ static int scsi_disk_emulate_start_stop(SCSIDiskReq *r)
             s->tray_open = !start;
         }
     }
+    */
     return 0;
 }
 
