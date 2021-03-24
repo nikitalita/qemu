@@ -1557,7 +1557,7 @@ static void scsi_disk_emulate_mode_select(SCSIDiskReq *r, uint8_t *inbuf)
 
     /* We only support PF=1, SP=0.  */
     if ((r->req.cmd.buf[1] & 0x11) != 0x10) {
-        goto invalid_field;
+        goto invalid_pf_zero;
     }
 
     if (len < hdr_len) {
@@ -1604,8 +1604,8 @@ invalid_param_len:
     scsi_check_condition(r, SENSE_CODE(INVALID_PARAM_LEN));
     return;
 
-invalid_field:
-    scsi_check_condition(r, SENSE_CODE(INVALID_FIELD));
+invalid_pf_zero:
+    scsi_req_complete(&r->req, GOOD);
 }
 
 /* sector_num and nb_sectors expected to be in qdev blocksize */
