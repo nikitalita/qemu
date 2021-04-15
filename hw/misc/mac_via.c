@@ -17,6 +17,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "exec/address-spaces.h"
 #include "migration/vmstate.h"
 #include "hw/sysbus.h"
 #include "hw/irq.h"
@@ -888,6 +889,54 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
     }
 }
 
+static void via1_timer_calibration_hack(MOS6522Q800VIA1State *v1s, int addr,
+                                        uint8_t val)
+{
+    /* FIXME: fudge TimeDBRA calibration in SETUPTIMEK so that 0xd00
+     * is non-zero. Detect VIA_REG_T2CL == 0xc and VIA_REG_T2CH == 0x3
+     * equivalent to 780 (1ms) and update values to ensure the result of
+     * the calculation doesn't return zero */
+
+    switch (v1s->timer_hack_state) {
+    case 0:
+        if (addr == VIA_REG_T2CL && val == 0xc) {
+            /* VIA_REG_T2CL: low byte of 1ms counter */
+            v1s->timer_hack_state = 1;
+        }
+        break;
+    case 1:
+        if (addr == VIA_REG_T2CH && val == 0x3) {
+            /*
+             * VIA_REG_T2CH: high byte of 1ms counter (very likely at the
+             * start of SETUPTIMEK)
+             */
+            v1s->timer_hack_state = 2;
+        }
+        break;
+    case 2:
+        if (addr == VIA_REG_IER && val == 0x20) {
+            /*
+             * VIA_REG_IER: update at end of SETUPTIMEK
+             *
+             * Timer calibration has finished: unfortunately the values in
+             * TIMEDBRA (0xd00) and TIMESCCDB (0xd02) are so far out they
+             * cause divide by zero errors.
+             *
+             * Update them with values obtained from a real Q800 but with
+             * a x3 scaling factor which seems to work well
+             */
+            stw_be_phys(&address_space_memory, 0xd00, 0x2a00 * 3);
+            stw_be_phys(&address_space_memory, 0xd02, 0x079d * 3);
+
+            /* No need to do this again */
+            v1s->timer_hack_state = 0;
+        }
+        break;
+    default:
+        return;
+    }
+}
+
 static uint64_t mos6522_q800_via1_read(void *opaque, hwaddr addr, unsigned size)
 {
     MOS6522Q800VIA1State *s = MOS6522_Q800_VIA1(opaque);
@@ -913,14 +962,7 @@ static void mos6522_q800_via1_write(void *opaque, hwaddr addr, uint64_t val,
 
     addr = (addr >> 9) & 0xf;
 
-    /* FIXME: fudge TimeDBRA calibration in SETUPTIMEK so that 0xd00
-     * is non-zero. Detect VIA_REG_T2CL == 0xc and VIA_REG_T2CH == 0x3
-     * equivalent to 780 (1ms) and tweak values to ensure the result of
-     * the calculation doesn't return zero */
-    if (addr == VIA_REG_T2CH && val == 0x3) {
-        mos6522_write(ms, VIA_REG_T2CL, 0x8, 1);
-        val = 0;
-    }
+    via1_timer_calibration_hack(v1s, addr, val);
 
     mos6522_write(ms, addr, val, size);
 
