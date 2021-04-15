@@ -101,6 +101,9 @@ struct MacVIAState {
     MOS6522Q800VIA1State mos6522_via1;
     MOS6522Q800VIA2State mos6522_via2;
 
+    /* SETUPTIMEK hack */
+    int timer_hack_state;
+
     /* RTC */
     uint32_t tick_offset;
 
