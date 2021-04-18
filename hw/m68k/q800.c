@@ -93,37 +93,53 @@
 static MemTxResult macio_alias_read(void *opaque, hwaddr addr, uint64_t *data,
                                     unsigned size, MemTxAttrs attrs)
 {
-    MemoryRegion *mr = opaque;
-    MemoryRegionSection mrs;
+    MemTxResult r;
+    uint32_t val;
 
     addr &= IO_SLICE_MASK;
-    mrs = memory_region_find(mr, addr, size);
+    addr |= IO_BASE;
 
-    if (mrs.mr) {
-        return memory_region_dispatch_read(mrs.mr, mrs.offset_within_region,
-                                           data, size_memop(size) | MO_BE,
-                                           attrs);
-    } else {
-        return MEMTX_DECODE_ERROR;
+    switch (size) {
+    case 4:
+        val = address_space_ldl_be(&address_space_memory, addr, attrs, &r);
+        break;
+    case 2:
+        val = address_space_lduw_be(&address_space_memory, addr, attrs, &r);
+        break;
+    case 1:
+        val = address_space_ldub(&address_space_memory, addr, attrs, &r);
+        break;
+    default:
+        g_assert_not_reached();
     }
+
+    *data = val;
+    return r;
 }
 
 static MemTxResult macio_alias_write(void *opaque, hwaddr addr, uint64_t value,
                                      unsigned size, MemTxAttrs attrs)
 {
-    MemoryRegion *mr = opaque;
-    MemoryRegionSection mrs;
+    MemTxResult r;
 
     addr &= IO_SLICE_MASK;
-    mrs = memory_region_find(mr, addr, size);
+    addr |= IO_BASE;
 
-    if (mrs.mr) {
-        return memory_region_dispatch_write(mrs.mr, mrs.offset_within_region,
-                                            value, size_memop(size) | MO_BE,
-                                            attrs);
-    } else {
-        return MEMTX_DECODE_ERROR;
+    switch (size) {
+    case 4:
+        address_space_stl_be(&address_space_memory, addr, value, attrs, &r);
+        break;
+    case 2:
+        address_space_stw_be(&address_space_memory, addr, value, attrs, &r);
+        break;
+    case 1:
+        address_space_stb(&address_space_memory, addr, value, attrs, &r);
+        break;
+    default:
+        g_assert_not_reached();
     }
+
+    return r;
 }
 
 static const MemoryRegionOps macio_alias_ops = {
