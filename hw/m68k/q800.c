@@ -324,6 +324,8 @@ static void q800_init(MachineState *machine)
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 0,
                                 qdev_get_gpio_in(m->djmemc, 0));
     qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 1,
+                                qdev_get_gpio_in(m->djmemc, 5));
+    qdev_connect_gpio_out_named(DEVICE(sysbus), "irq", 2,
                                 qdev_get_gpio_in(m->djmemc, 1));
 
 

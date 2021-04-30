@@ -380,8 +380,14 @@ static void via2_irq_request(void *opaque, int irq, int level)
 static void via1_input_irq(void *opaque, int irq, int level)
 {
     MacVIAState *m = MAC_VIA(opaque);
+    MOS6522Q800VIA1State *v1s = &m->mos6522_via1;
+    MOS6522State *s = MOS6522(v1s);
 
-    qemu_set_irq(m->via1_irq, level);
+    if (s->b & VIA1B_vMystery) {
+        qemu_set_irq(m->via1_irq[0], level);
+    } else {
+        qemu_set_irq(m->via1_irq[1], level);
+    }
     return;
 }
 
@@ -1171,7 +1177,7 @@ static void mac_via_init(Object *obj)
                             "via2-input-irq", 1);
 
     /* VIA output irqs */
-    qdev_init_gpio_out_named(DEVICE(obj), &m->via1_irq, "irq", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &m->via1_irq[0], "irq", 2);
     qdev_init_gpio_out_named(DEVICE(obj), &m->via2_irq, "irq", 1);
 }
 

@@ -100,6 +100,8 @@ struct MacVIAState {
     /* VIAs */
     MOS6522Q800VIA1State mos6522_via1;
     MOS6522Q800VIA2State mos6522_via2;
+    qemu_irq via1_irq[2];
+    qemu_irq via2_irq;
 
     /* SETUPTIMEK hack */
     int timer_hack_state;
