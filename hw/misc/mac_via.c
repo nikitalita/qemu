@@ -377,6 +377,22 @@ static void via2_irq_request(void *opaque, int irq, int level)
     mdc->update_irq(s);
 }
 
+static void via1_input_irq(void *opaque, int irq, int level)
+{
+    MacVIAState *m = MAC_VIA(opaque);
+
+    qemu_set_irq(m->via1_irq, level);
+    return;
+}
+
+static void via2_input_irq(void *opaque, int irq, int level)
+{
+    MacVIAState *m = MAC_VIA(opaque);
+
+    qemu_set_irq(m->via2_irq, level);
+    return;
+}
+
 
 static void pram_update(MacVIAState *m)
 {
@@ -897,6 +913,27 @@ static void via1_adb_update(MacVIAState *m)
     }
 }
 
+static void via1_irq_update(MacVIAState *m)
+{
+    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(&m->mos6522_via1);
+    MOS6522State *s = MOS6522(v1s);
+    int oldirq, irq;
+
+    oldirq = (v1s->last_b & VIA1B_vMystery);
+    irq = (s->b & VIA1B_vMystery);
+
+    /*
+     * Active low indicates wiring in what NetBSD calls A/UX mode
+     */
+    if (irq != oldirq) {
+        if (irq) {
+            trace_via1_irq_aux_mode("disabled");
+        } else {
+            trace_via1_irq_aux_mode("enabled");
+        }
+    }
+}
+
 static void via1_timer_calibration_hack(MacVIAState *m, int addr, uint8_t val)
 {
     /* FIXME: fudge TimeDBRA calibration in SETUPTIMEK so that 0xd00
@@ -978,6 +1015,7 @@ static void mos6522_q800_via1_write(void *opaque, hwaddr addr, uint64_t val,
     case VIA_REG_B:
         via1_rtc_update(m);
         via1_adb_update(m);
+        via1_irq_update(m);
 
         v1s->last_b = ms->b;
         break;
@@ -1037,7 +1075,6 @@ static void mac_via_reset(DeviceState *dev)
 static void mac_via_realize(DeviceState *dev, Error **errp)
 {
     MacVIAState *m = MAC_VIA(dev);
-    MOS6522State *ms;
     ADBBusState *adb_bus = &m->adb_bus;
     struct tm tm;
     int ret;
@@ -1049,16 +1086,17 @@ static void mac_via_realize(DeviceState *dev, Error **errp)
     object_initialize_child(OBJECT(dev), "via2", &m->mos6522_via2,
                             TYPE_MOS6522_Q800_VIA2);
 
-    /* Pass through mos6522 output IRQs */
-    ms = MOS6522(&m->mos6522_via1);
-    object_property_add_alias(OBJECT(dev), "irq[0]", OBJECT(ms),
-                              SYSBUS_DEVICE_GPIO_IRQ "[0]");
-    ms = MOS6522(&m->mos6522_via2);
-    object_property_add_alias(OBJECT(dev), "irq[1]", OBJECT(ms),
-                              SYSBUS_DEVICE_GPIO_IRQ "[0]");
-
+    /* Connect mos6522 output IRQs to local input IRQs */
     sysbus_realize(SYS_BUS_DEVICE(&m->mos6522_via1), &error_abort);
     sysbus_realize(SYS_BUS_DEVICE(&m->mos6522_via2), &error_abort);
+
+    qdev_connect_gpio_out_named(DEVICE(&m->mos6522_via1),
+        SYSBUS_DEVICE_GPIO_IRQ, 0,
+        qdev_get_gpio_in_named(dev, "via1-input-irq", 0));
+
+    qdev_connect_gpio_out_named(DEVICE(&m->mos6522_via2),
+        SYSBUS_DEVICE_GPIO_IRQ, 0,
+        qdev_get_gpio_in_named(dev, "via2-input-irq", 0));
 
     /* Pass through mos6522 input IRQs */
     qdev_pass_gpios(DEVICE(&m->mos6522_via1), dev, "via1-irq");
@@ -1125,6 +1163,16 @@ static void mac_via_init(Object *obj)
     /* ADB */
     qbus_create_inplace((BusState *)&m->adb_bus, sizeof(m->adb_bus),
                         TYPE_ADB_BUS, DEVICE(obj), "adb.0");
+
+    /* VIA input irqs */
+    qdev_init_gpio_in_named(DEVICE(obj), via1_input_irq,
+                            "via1-input-irq", 1);
+    qdev_init_gpio_in_named(DEVICE(obj), via2_input_irq,
+                            "via2-input-irq", 1);
+
+    /* VIA output irqs */
+    qdev_init_gpio_out_named(DEVICE(obj), &m->via1_irq, "irq", 1);
+    qdev_init_gpio_out_named(DEVICE(obj), &m->via2_irq, "irq", 1);
 }
 
 static void postload_update_cb(void *opaque, bool running, RunState state)
