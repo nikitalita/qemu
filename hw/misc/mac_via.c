@@ -878,7 +878,14 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
         s->b |= VIA1B_vADBInt;
     }
 
-    if (state != oldstate) {
+    /*
+     * Only shift if the host has changed state, or if the last command
+     * sent was 0x0 (ADB_BUSRESET). This is needed for NetBSD which doesn't
+     * switch state after sending the bus reset command from ADB_STATE_NEW
+     * and so without this hack we miss the next command submitted
+     */
+    if (state != oldstate ||
+        ((v1s->last_b & ~VIA1B_vADB_StateMask) == (s->b & ~VIA1B_vADB_StateMask))) {
         if (s->acr & VIA1ACR_vShiftOut) {
             /* output mode */
             adb_via_send(v1s, state, s->sr);
@@ -886,6 +893,9 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
             /* input mode */
             adb_via_receive(v1s, state, &s->sr);
         }
+//    } else {
+//        fprintf(stderr, "### last_b 0x%x, current b 0x%x\n", v1s->last_b, s->b);
+//        fprintf(stderr, "#### state is still the same, ignoring\n");
     }
 }
 
