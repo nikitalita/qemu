@@ -1082,6 +1082,7 @@ static int mode_sense_page(SCSIDiskState *s, int page, uint8_t **p_outbuf,
         [MODE_PAGE_R_W_ERROR]              = (1 << TYPE_DISK) | (1 << TYPE_ROM),
         [MODE_PAGE_AUDIO_CTL]              = (1 << TYPE_ROM),
         [MODE_PAGE_CAPABILITIES]           = (1 << TYPE_ROM),
+        [MODE_PAGE_APPLE]                  = (1 << TYPE_ROM),
     };
 
     uint8_t *p = *p_outbuf + 2;
@@ -1223,6 +1224,16 @@ static int mode_sense_page(SCSIDiskState *s, int page, uint8_t **p_outbuf,
         p[17] = (16 * 176) & 0xff;
         p[18] = (16 * 176) >> 8; /* 16x write speed current */
         p[19] = (16 * 176) & 0xff;
+        break;
+
+    case MODE_PAGE_APPLE:
+        length = 0x24;
+        if (page_control == 1) { /* Changeable Values */
+            break;
+        }
+
+        memset(p, 0, length);
+        strcpy((char *)p + 8, "APPLE COMPUTER, INC   ");
         break;
 
     default:
