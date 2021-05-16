@@ -879,14 +879,7 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
         s->b |= VIA1B_vADBInt;
     }
 
-    /*
-     * Only shift if the host has changed state, or if the last command
-     * sent was 0x0 (ADB_BUSRESET). This is needed for NetBSD which doesn't
-     * switch state after sending the bus reset command from ADB_STATE_NEW
-     * and so without this hack we miss the next command submitted
-     */
-    if (state != oldstate ||
-        ((v1s->last_b & ~VIA1B_vADB_StateMask) == (s->b & ~VIA1B_vADB_StateMask))) {
+    if (state != oldstate) {
         if (s->acr & VIA1ACR_vShiftOut) {
             /* output mode */
             adb_via_send(v1s, state, s->sr);
@@ -894,9 +887,6 @@ static void via1_adb_update(MOS6522Q800VIA1State *v1s)
             /* input mode */
             adb_via_receive(v1s, state, &s->sr);
         }
-//    } else {
-//        fprintf(stderr, "### last_b 0x%x, current b 0x%x\n", v1s->last_b, s->b);
-//        fprintf(stderr, "#### state is still the same, ignoring\n");
     }
 }
 
@@ -970,6 +960,7 @@ static void mos6522_q800_via1_write(void *opaque, hwaddr addr, uint64_t val,
 {
     MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(opaque);
     MOS6522State *ms = MOS6522(v1s);
+    int state;
 
     addr = (addr >> 9) & 0xf;
 
@@ -984,6 +975,18 @@ static void mos6522_q800_via1_write(void *opaque, hwaddr addr, uint64_t val,
 
         v1s->last_b = ms->b;
         break;
+
+    case VIA_REG_SR:
+        state = (ms->b & VIA1B_vADB_StateMask) >> VIA1B_vADB_StateShift;
+
+        /*
+         * If we write to the shift register whilst still in ADB_STATE_NEW
+         * then consider it to be the start of a new command (NetBSD relies
+         * upon this)
+         */
+        if (state == ADB_STATE_NEW && (ms->acr & VIA1ACR_vShiftOut)) {
+            adb_via_send(v1s, state, ms->sr);
+        }
     }
 }
 
