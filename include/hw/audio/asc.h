@@ -31,14 +31,27 @@ struct ASCState {
     MemoryRegion mem_fifo;
     MemoryRegion mem_regs;
     MemoryRegion mem_extregs;
+
     QEMUSoundCard card;
-    SWVoiceOut *channel;
+    SWVoiceOut *voice;
+    int8_t *mixbuf;
+    int left, pos, samples, shift;
 
     qemu_irq irq;
 
     uint8_t type;
     int a_wptr, a_rptr, a_cnt;
     int b_wptr, b_rptr, b_cnt;
+
+    int xa_acnt;
+    uint8_t xa_aval;
+    uint8_t xa_aflags;
+    int16_t xa_alast[2];
+
+    int xa_bcnt;
+    uint8_t xa_bval;
+    uint8_t xa_bflags;
+    int16_t xa_blast[2];
 
     uint8_t *fifo;
 

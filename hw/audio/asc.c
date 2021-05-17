@@ -72,7 +72,11 @@
  *     0x824: WAVETABLE 2 INCREMENT
  *     0x828: WAVETABLE 3 PHASE
  *     0x82C: WAVETABLE 3 INCREMENT
- */
+ *     0x830: UNKNOWN START
+ *            NetBSD writes Wavetable data here (are there more
+ *            wavetables/channels than we know about?)
+ *     0x857: UNKNOWN END
+*/
 
 #define ASC_SIZE           0x2000
 
@@ -80,7 +84,7 @@
 #define ASC_FIFO_SIZE      0x800
 
 #define ASC_REG_OFFSET     0x800
-#define ASC_REG_SIZE       0x40
+#define ASC_REG_SIZE       0x60
 
 #define ASC_EXTREG_OFFSET  0xf00
 #define ASC_EXTREG_SIZE    0x40
@@ -98,6 +102,140 @@ enum {
     ASC_TEST        = 0x0f,
     ASC_WAVETABLE   = 0x10
 };
+
+static void asc_raise_irq(ASCState *s)
+{
+    trace_asc_raise_irq();
+    qemu_irq_raise(s->irq);
+}
+
+static void asc_lower_irq(ASCState *s)
+{
+    trace_asc_lower_irq();
+    qemu_irq_lower(s->irq);
+}
+
+static inline bool asc_fifo_half_full_irq_enabled(ASCState *s, int fifo)
+{
+    int ireg;
+
+    /* ASC half full irq always enabled */
+    if (s->type == ASC_TYPE_ASC) {
+        return true;
+    }
+
+    /* Otherwise check the bit in the extreg */
+    ireg = (fifo == 0) ? 0x9 : 0x29;
+    if (s->extregs[ireg] & 1) {
+        return true;
+    }
+
+    return false;
+}
+
+static void asc_fifo_put(ASCState *s, int fifo, uint8_t val)
+{
+    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
+
+    switch (fifo) {
+    case 0:
+        /* FIFO A */
+        s->fifo[s->a_wptr++] = val;
+        s->a_cnt++;
+
+        if (s->a_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A Half Full */
+            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+        }
+        if (s->a_cnt == 0x3ff) {
+            s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
+            asc_raise_irq(s);
+        }
+        s->a_wptr &= 0x3ff;
+        break;
+
+    case 1:
+        /* FIFO B */
+        s->fifo[s->b_wptr++ + 0x400] = val;
+        s->b_cnt++;
+
+        if (s->b_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 4;
+            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+        }
+        if (s->b_cnt == 0x3ff) {
+            s->regs[ASC_FIFOIRQ] |= 8; /* FIFO A Full */
+            asc_raise_irq(s);
+        }
+        s->b_wptr &= 0x3ff;
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static bool asc_fifo_get(ASCState *s, int fifo, uint8_t *val)
+{
+    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
+    bool res = true;
+
+    switch (fifo) {
+    case 0:
+        /* FIFO A */
+        *val = s->fifo[s->a_rptr];
+        if (s->a_cnt) {
+            s->a_rptr++;
+            s->a_rptr &= 0x3ff;
+            s->a_cnt--;
+        } else {
+            res = false;
+        }
+
+        if (s->a_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A less than half full */
+            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+            if (s->a_cnt == 0) {
+                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A empty */
+                asc_raise_irq(s);
+            }
+        }
+        break;
+
+    case 1:
+        *val = s->fifo[s->b_rptr + 0x400];
+        if (s->b_cnt) {
+            s->b_rptr++;
+            s->b_rptr &= 0x3ff;
+            s->b_cnt--;
+        } else {
+            res = false;
+        }
+
+        if (s->b_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B less than half full */
+            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+            if (s->b_cnt == 0) {
+                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B empty */
+                asc_raise_irq(s);
+            }
+        }
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    return res;
+}
 
 static inline uint32_t get_phase(ASCState *s, int channel)
 {
@@ -125,121 +263,268 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
     return get_phase(s, channel);
 }
 
-static void generate_fifo(ASCState *s, int free_b)
+static int generate_fifo(ASCState *s, int maxsamples)
 {
-    int8_t buf[2048];
-    int i;
-    int to_copy;
+    int8_t *buf = s->mixbuf + s->pos;
+    int i = 0, lc = 0, rc = 0;
 
-    do {
-        to_copy = MIN(sizeof(buf), free_b);
-        for (i = 0; i < (to_copy >> 1); i++) {
-            int8_t left, right;
+    while (i < maxsamples) {
+        uint8_t v;
+        int8_t left, right;
+        int16_t d, f0, f1;
+        int32_t t;
+        int shift, filter;
+        bool res;
 
-            left = s->fifo[s->a_rptr] ^ 0x80;
-            right = s->fifo[s->b_rptr + 0x400] ^ 0x80;
+        left = 0;
+        right = 0;
 
-            if (s->a_cnt) {
-                s->a_rptr++;
-                s->a_rptr &= 0x3ff;
-                s->a_cnt--;
-            }
-
-            if (s->b_cnt) {
-                s->b_rptr++;
-                s->b_rptr &= 0x3ff;
-                s->b_cnt--;
-            }
-
-            if (s->type == ASC_TYPE_SONORA) {
-                if (s->a_cnt < 0x200) {
-                    s->regs[ASC_FIFOIRQ] |= 4; /* FIFO A less than half full */
-                    qemu_irq_raise(s->irq);
-                }
-                if (s->b_cnt < 0x200) {
-                    s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B less than half full */
-                    qemu_irq_raise(s->irq);
-                }
-            } else {
-                if (s->a_cnt == 0x1ff) {
-                    s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A half empty */
-                    qemu_irq_raise(s->irq);
-                } else if (s->a_cnt == 0x001) {
-                    s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A half empty */
-                    qemu_irq_raise(s->irq);
-                }
-                if (s->b_cnt == 0x1ff) {
-                    s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B half empty */
-                    qemu_irq_raise(s->irq);
-                } else if (s->b_cnt == 0x001) {
-                    s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B half empty */
-                    qemu_irq_raise(s->irq);
+        if ((s->extregs[0x8] & 0x83) == 0x82) {
+            /*
+             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
+             * for a complete packet
+             */
+            if (s->xa_acnt == -1) {
+                res = asc_fifo_get(s, 0, &s->xa_aflags);
+                if (!res) {
+                    buf[lc * 2] = left;
+                    lc++;
+                } else {
+                    s->xa_acnt = 0;
                 }
             }
-            buf[i * 2] = left;
-            buf[i * 2 + 1] = right;
+
+            if (s->xa_acnt != -1) {
+                shift = s->xa_aflags & 0xf;
+                filter = s->xa_aflags >> 4;
+                f0 = (int8_t)s->extregs[0x10 + (filter << 1) + 1];
+                f1 = (int8_t)s->extregs[0x10 + (filter << 1)];
+
+                    if ((s->xa_acnt & 1) == 0) {
+                        res = asc_fifo_get(s, 0, &s->xa_aval);
+                        if (!res) {
+                            break;
+                        }
+                        d = (s->xa_aval & 0xf) << 12;
+                    } else {
+                        d = (s->xa_aval & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((s->xa_alast[0] * f0) + (s->xa_alast[1] * f1) + 32) >> 6);
+                    if (t < -32768) {
+                        t = -32768;
+                    } else if (t > 32768) {
+                        t = 32768;
+                    }
+                    /*
+                     * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
+                     * writing to buffer. Does real hardware do the same?
+                     */
+                    buf[lc * 2] = (int8_t)(t / 256);
+                    s->xa_acnt++;
+                    lc++;
+
+                    s->xa_alast[1] = s->xa_alast[0];
+                    s->xa_alast[0] = (int16_t)t;
+
+                    if (s->xa_acnt == 28) {
+                        s->xa_acnt = -1;
+                    }
+            }
+        } else {
+            /* Raw mode */
+            res = asc_fifo_get(s, 0, &v);
+            if (res) {
+                left = v ^ 0x80;
+            }
+            buf[lc * 2] = left;
+            lc++;
         }
-        AUD_write(s->channel, buf, to_copy);
-        free_b -= to_copy;
-    } while (free_b);
+
+        if ((s->extregs[0x28] & 0x83) == 0x82) {
+            /*
+             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
+             * for a complete packet
+             */
+            if (s->xa_bcnt == -1) {
+                res = asc_fifo_get(s, 1, &s->xa_bflags);
+                if (!res) {
+                    buf[rc * 2] = right;
+                    rc++;
+                } else {
+                    s->xa_bcnt = 0;
+                }
+            }
+
+            if (s->xa_bcnt != -1) {
+                shift = s->xa_bflags & 0xf;
+                filter = s->xa_bflags >> 4;
+                f0 = (int8_t)s->extregs[0x30 + (filter << 1) + 1];
+                f1 = (int8_t)s->extregs[0x30 + (filter << 1)];
+
+                    if ((s->xa_bcnt & 1) == 0) {
+                        res = asc_fifo_get(s, 1, &s->xa_bval);
+                        if (!res) {
+                            break;
+                        }
+                        d = (s->xa_bval & 0xf) << 12;
+                    } else {
+                        d = (s->xa_bval & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((s->xa_blast[0] * f0) + (s->xa_blast[1] * f1) + 32) >> 6);
+                    if (t < -32768) {
+                        t = -32768;
+                    } else if (t > 32768) {
+                        t = 32768;
+                    }
+                    /*
+                     * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
+                     * writing to buffer. Does real hardware do the same?
+                     */
+                    buf[rc * 2 + 1] = (int8_t)(t / 256);
+                    s->xa_bcnt++;
+                    rc++;
+
+                    s->xa_blast[1] = s->xa_blast[0];
+                    s->xa_blast[0] = (int16_t)t;
+
+                    if (s->xa_bcnt == 28) {
+                        s->xa_bcnt = -1;
+                    }
+            }
+
+        } else {
+            /* Raw mode */
+            res = asc_fifo_get(s, 1, &v);
+            if (res) {
+                right = v ^ 0x80;
+            }
+            buf[rc * 2 + 1] = right;
+            rc++;
+        }
+
+        i = MAX(lc, rc);
+    }
+
+    return i;
 }
 
-static void generate_wavetable(ASCState *s, int free_b)
+static int generate_wavetable(ASCState *s, int maxsamples)
 {
-    int8_t buf[2048];
-    int i;
-    int channel;
-    int to_copy;
     int control = s->regs[ASC_WAVECTRL];
+    int8_t *buf = s->mixbuf + s->pos;
+    int channel, i = 0;
 
-    do {
-        to_copy = MIN(sizeof(buf), free_b);
-        for (i = 0; i < (to_copy >> 1); i++) {
-                int32_t left, right;
-                int8_t sample;
+    while (i < maxsamples) {
+        int32_t left, right;
+        int8_t sample;
 
-                left = 0;
-                right = 0;
+        left = 0;
+        right = 0;
 
-                if (control) { /* FIXME: how to use it ? */
-                    for (channel = 0; channel < 4; channel++) {
-                        uint32_t phase = incr_phase(s, channel);
+        if (control) { /* FIXME: how to use it ? */
+            for (channel = 0; channel < 4; channel++) {
+                uint32_t phase = incr_phase(s, channel);
 
-                        phase = (phase >> 15) & 0x1ff;
-                        sample = s->fifo[0x200 * channel + phase] ^ 0x80;
+                phase = (phase >> 15) & 0x1ff;
+                sample = s->fifo[0x200 * channel + phase] ^ 0x80;
 
-                        left += sample;
-                        right += sample;
-                    }
-                    buf[i * 2] = left >> 2;
-                    buf[i * 2 + 1] = right >> 2;
-                } else {
-                    /* FIXME: only works with linux macboing.c */
-                    uint32_t phase = incr_phase(s, 0);
-                    phase = (phase >> 15) & 0x7ff;
-                    sample = s->fifo[phase];
-                    buf[i * 2] = sample;
-                    buf[i * 2 + 1] = sample;
-                }
+                left += sample;
+                right += sample;
+            }
+            buf[i * 2] = left >> 2;
+            buf[i * 2 + 1] = right >> 2;
+        } else {
+            /* FIXME: only works with linux macboing.c */
+            uint32_t phase = incr_phase(s, 0);
+            phase = (phase >> 15) & 0x7ff;
+            sample = s->fifo[phase];
+            buf[i * 2] = sample;
+            buf[i * 2 + 1] = sample;
         }
-        AUD_write(s->channel, buf, to_copy);
-        free_b -= to_copy;
-    } while (free_b);
+        i++;
+    }
+
+    return i;
+}
+
+static int write_audio(ASCState *s, int samples)
+{
+    int net = 0;
+    int pos = s->pos;
+
+    while (samples) {
+        int nbytes, wbytes, wsampl;
+
+        nbytes = samples << s->shift;
+        wbytes = AUD_write(s->voice,
+                           s->mixbuf + (pos << (s->shift - 1)),
+                           nbytes);
+        if (wbytes) {
+            wsampl = wbytes >> s->shift;
+
+            samples -= wsampl;
+            pos = (pos + wsampl) % s->samples;
+
+            net += wsampl;
+        } else {
+            break;
+        }
+    }
+
+    return net;
 }
 
 static void asc_out_cb(void *opaque, int free_b)
 {
     ASCState *s = opaque;
+    int samples, net = 0, to_play, written;
+
+    samples = free_b >> s->shift;
+    if (!samples) {
+        return;
+    }
+
+    to_play = MIN(s->left, samples);
+    while (to_play) {
+        written = write_audio(s, to_play);
+
+        if (written) {
+            s->left -= written;
+            samples -= written;
+            to_play -= written;
+            s->pos = (s->pos + written) % s->samples;
+        } else {
+            return;
+        }
+    }
+
+    samples = MIN(samples, s->samples - s->pos);
+    if (!samples) {
+        return;
+    }
 
     switch (s->regs[ASC_MODE] & 3) {
     case 0: /* Off */
         break;
     case 1: /* FIFO mode */
-        generate_fifo(s, free_b);
+        samples = generate_fifo(s, samples);
         break;
     case 2: /* Wave table mode */
-        generate_wavetable(s, free_b);
+        samples = generate_wavetable(s, samples);
         break;
+    }
+
+    while (samples) {
+        written = write_audio(s, samples);
+
+        if (written) {
+            net += written;
+            samples -= written;
+            s->pos = (s->pos + written) % s->samples;
+        } else {
+            s->left = samples;
+            return;
+        }
     }
 }
 
@@ -261,20 +546,10 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     if (s->regs[ASC_MODE] == 1) {
         if (addr < 0x400) {
             /* FIFO A */
-            s->fifo[s->a_wptr++] = value;
-            s->a_cnt++;
-            if (s->a_cnt == 0x3ff) {
-                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
-            }
-            s->a_wptr &= 0x3ff;
+            asc_fifo_put(s, 0, value);
         } else {
             /* FIFO B */
-            s->fifo[s->b_wptr++ + 0x400] = value;
-            s->b_cnt++;
-            if (s->b_cnt == 0x3ff) {
-                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B Full */
-            }
-            s->b_wptr &= 0x3ff;
+            asc_fifo_put(s, 1, value);
         }
     } else {
         s->fifo[addr] = value;
@@ -352,7 +627,7 @@ static uint64_t asc_read(void *opaque, hwaddr addr,
             prev = s->regs[ASC_FIFOIRQ];
         }
         s->regs[ASC_FIFOIRQ] = 0;
-        qemu_irq_lower(s->irq);
+        asc_lower_irq(s);
         value = prev;
         break;
     default:
@@ -380,9 +655,9 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
             s->b_wptr = 0;
             s->b_cnt = 0;
             if (value != 0) {
-                AUD_set_active_out(s->channel, 1);
+                AUD_set_active_out(s->voice, 1);
             } else {
-                AUD_set_active_out(s->channel, 0);
+                AUD_set_active_out(s->voice, 0);
             }
         }
         break;
@@ -465,15 +740,30 @@ static void asc_reset(DeviceState *d)
 {
     ASCState *s = ASC(d);
 
-    AUD_set_active_out(s->channel, 0);
+    AUD_set_active_out(s->voice, 0);
 
     memset(s->regs, 0, sizeof(s->regs));
     s->a_wptr = 0;
     s->a_rptr = 0;
     s->a_cnt = 0;
+    s->xa_acnt = -1;
     s->b_wptr = 0;
     s->b_rptr = 0;
     s->b_cnt = 0;
+    s->xa_bcnt = -1;
+
+    /* FIFO A and B empty */
+    s->regs[ASC_FIFOIRQ] = 0xf;
+}
+
+static void asc_unrealize(DeviceState *dev)
+{
+    ASCState *s = ASC(dev);
+
+    g_free(s->mixbuf);
+    g_free(s->fifo);
+
+    AUD_remove_card(&s->card);
 }
 
 static void asc_realize(DeviceState *dev, Error **errp)
@@ -486,10 +776,13 @@ static void asc_realize(DeviceState *dev, Error **errp)
     as.freq = 22257;
     as.nchannels = 2;
     as.fmt = AUDIO_FORMAT_S8;
-    as.endianness = 0;
+    as.endianness = AUDIO_HOST_ENDIANNESS;
 
-    s->channel = AUD_open_out(&s->card, s->channel, "asc.out",
-                              s, asc_out_cb, &as);
+    s->voice = AUD_open_out(&s->card, s->voice, "asc.out", s, asc_out_cb,
+                            &as);
+    s->shift = 1;
+    s->samples = AUD_get_buffer_size_out(s->voice) >> s->shift;
+    s->mixbuf = g_malloc0(s->samples << s->shift);
 
     s->fifo = g_malloc0(ASC_FIFO_SIZE);
 
@@ -530,6 +823,7 @@ static void asc_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = asc_realize;
+    dc->unrealize = asc_unrealize;
     set_bit(DEVICE_CATEGORY_SOUND, dc->categories);
     dc->reset = asc_reset;
     dc->vmsd = &vmstate_asc;
