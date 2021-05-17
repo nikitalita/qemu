@@ -72,7 +72,11 @@
  *     0x824: WAVETABLE 2 INCREMENT
  *     0x828: WAVETABLE 3 PHASE
  *     0x82C: WAVETABLE 3 INCREMENT
- */
+ *     0x830: UNKNOWN START
+ *            NetBSD writes Wavetable data here (are there more
+ *            wavetables/channels than we know about?)
+ *     0x857: UNKNOWN END
+*/
 
 #define ASC_SIZE           0x2000
 
@@ -80,7 +84,7 @@
 #define ASC_FIFO_SIZE      0x800
 
 #define ASC_REG_OFFSET     0x800
-#define ASC_REG_SIZE       0x40
+#define ASC_REG_SIZE       0x60
 
 #define ASC_EXTREG_OFFSET  0xf00
 #define ASC_EXTREG_SIZE    0x40
