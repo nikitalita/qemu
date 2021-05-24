@@ -147,6 +147,7 @@ static const MemoryRegionOps macio_alias_ops = {
     .write_with_attrs = macio_alias_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
+        .unaligned = true,
         .min_access_size = 1,
         .max_access_size = 4,
     },
@@ -369,7 +370,10 @@ static void q800_init(MachineState *machine)
                                 sysbus_mmio_get_region(sysbus, 0));
     memory_region_add_subregion(&m->macio, SONIC_PROM_BASE - IO_BASE,
                                 sysbus_mmio_get_region(sysbus, 1));
-    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(m->djmemc, 2));
+    /* FIXME: also needs to switch based upon A/UX mode */
+    //sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in(m->djmemc, 2));
+    sysbus_connect_irq(sysbus, 0, qdev_get_gpio_in_named(via_dev, "via2-slot-irq",
+                                                         VIA2_SLOT_IRQ_9));
 
     /* SCC */
 
@@ -555,6 +559,10 @@ static void q800_init(MachineState *machine)
 
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
         memory_region_add_subregion(get_system_memory(), MACROM_ADDR, &m->rom);
+
+        memory_region_init_alias(&m->rom_alias, NULL, "m68k_mac.rom-alias",
+                                 &m->rom, 0, MACROM_SIZE);
+        memory_region_add_subregion(get_system_memory(), 0x40000000, &m->rom_alias);
 
         /* Load MacROM binary */
         if (filename) {
