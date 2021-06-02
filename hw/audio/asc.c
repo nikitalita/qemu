@@ -103,6 +103,36 @@ enum {
     ASC_WAVETABLE   = 0x10
 };
 
+static void asc_raise_irq(ASCState *s)
+{
+    trace_asc_raise_irq();
+    qemu_irq_raise(s->irq);
+}
+
+static void asc_lower_irq(ASCState *s)
+{
+    trace_asc_lower_irq();
+    qemu_irq_lower(s->irq);
+}
+
+static inline bool asc_fifo_half_full_irq_enabled(ASCState *s, int fifo)
+{
+    int ireg;
+
+    /* ASC half full irq always enabled */
+    if (s->type == ASC_TYPE_ASC) {
+        return true;
+    }
+
+    /* Otherwise check the bit in the extreg */
+    ireg = (fifo == 0) ? 0x9 : 0x29;
+    if (s->extregs[ireg] & 1) {
+        return true;
+    }
+
+    return false;
+}
+
 static inline uint32_t get_phase(ASCState *s, int channel)
 {
     return be32_to_cpu(*(uint32_t *)(s->regs + ASC_WAVETABLE + channel * 8));
@@ -134,6 +164,9 @@ static void generate_fifo(ASCState *s, int free_b)
     int8_t buf[2048];
     int i;
     int to_copy;
+    bool raise_irq = false;
+    bool fifoA_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 0);
+    bool fifoB_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 1);
 
     do {
         to_copy = MIN(sizeof(buf), free_b);
@@ -147,45 +180,49 @@ static void generate_fifo(ASCState *s, int free_b)
                 s->a_rptr++;
                 s->a_rptr &= 0x3ff;
                 s->a_cnt--;
+            } else {
+                left = 0;
             }
 
             if (s->b_cnt) {
                 s->b_rptr++;
                 s->b_rptr &= 0x3ff;
                 s->b_cnt--;
+            } else {
+                right = 0;
             }
 
-            if (s->type == ASC_TYPE_SONORA) {
-                if (s->a_cnt < 0x200) {
-                    s->regs[ASC_FIFOIRQ] |= 4; /* FIFO A less than half full */
-                    qemu_irq_raise(s->irq);
+            if (s->a_cnt <= 0x1ff) {
+                s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A less than half full */
+                if (s->a_cnt == 0x1ff && fifoA_half_irq_enabled) {
+                    raise_irq = true;
                 }
-                if (s->b_cnt < 0x200) {
-                    s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B less than half full */
-                    qemu_irq_raise(s->irq);
-                }
-            } else {
-                if (s->a_cnt == 0x1ff) {
-                    s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A half empty */
-                    qemu_irq_raise(s->irq);
-                } else if (s->a_cnt == 0x001) {
-                    s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A half empty */
-                    qemu_irq_raise(s->irq);
-                }
-                if (s->b_cnt == 0x1ff) {
-                    s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B half empty */
-                    qemu_irq_raise(s->irq);
-                } else if (s->b_cnt == 0x001) {
-                    s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B half empty */
-                    qemu_irq_raise(s->irq);
+                if (s->a_cnt == 0) {
+                    s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A empty */
+                    raise_irq = true;
                 }
             }
+            if (s->b_cnt <= 0x1ff) {
+                s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B less than half full */
+                if (s->b_cnt == 0x1ff && fifoB_half_irq_enabled) {
+                    raise_irq = true;
+                }
+                if (s->b_cnt == 0) {
+                    s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B empty */
+                    raise_irq = true;
+                }
+            }
+
             buf[i * 2] = left;
             buf[i * 2 + 1] = right;
         }
         AUD_write(s->channel, buf, to_copy);
         free_b -= to_copy;
     } while (free_b);
+
+    if (raise_irq) {
+        asc_raise_irq(s);
+    }
 }
 
 static void generate_wavetable(ASCState *s, int free_b)
@@ -260,6 +297,8 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
                            unsigned size)
 {
     ASCState *s = opaque;
+    bool fifoA_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 0);
+    bool fifoB_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 1);
 
     trace_asc_write_fifo(addr, size, value);
     if (s->regs[ASC_MODE] == 1) {
@@ -267,16 +306,32 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
             /* FIFO A */
             s->fifo[s->a_wptr++] = value;
             s->a_cnt++;
+
+            if (s->a_cnt <= 0x1ff) {
+                s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A Half Full */
+                if (s->a_cnt == 0x1ff && fifoA_half_irq_enabled) {
+                    asc_raise_irq(s);
+                }
+            }
             if (s->a_cnt == 0x3ff) {
                 s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
+                asc_raise_irq(s);
             }
             s->a_wptr &= 0x3ff;
         } else {
             /* FIFO B */
             s->fifo[s->b_wptr++ + 0x400] = value;
             s->b_cnt++;
+
+            if (s->b_cnt <= 0x1ff) {
+                s->regs[ASC_FIFOIRQ] |= 4;
+                if (s->b_cnt == 0x1ff && fifoB_half_irq_enabled) {
+                    asc_raise_irq(s);
+                }
+            }
             if (s->b_cnt == 0x3ff) {
-                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B Full */
+                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO A Full */
+                asc_raise_irq(s);
             }
             s->b_wptr &= 0x3ff;
         }
@@ -356,7 +411,7 @@ static uint64_t asc_read(void *opaque, hwaddr addr,
             prev = s->regs[ASC_FIFOIRQ];
         }
         s->regs[ASC_FIFOIRQ] = 0;
-        qemu_irq_lower(s->irq);
+        asc_lower_irq(s);
         value = prev;
         break;
     default:
@@ -478,6 +533,9 @@ static void asc_reset(DeviceState *d)
     s->b_wptr = 0;
     s->b_rptr = 0;
     s->b_cnt = 0;
+
+    /* FIFO A and B empty */
+    s->regs[ASC_FIFOIRQ] = 0xf;
 }
 
 static void asc_realize(DeviceState *dev, Error **errp)
