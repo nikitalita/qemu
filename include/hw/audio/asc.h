@@ -31,8 +31,11 @@ struct ASCState {
     MemoryRegion mem_fifo;
     MemoryRegion mem_regs;
     MemoryRegion mem_extregs;
+
     QEMUSoundCard card;
-    SWVoiceOut *channel;
+    SWVoiceOut *voice;
+    int8_t *mixbuf;
+    int left, pos, samples, shift;
 
     qemu_irq irq;
 
