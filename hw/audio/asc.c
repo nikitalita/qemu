@@ -133,6 +133,110 @@ static inline bool asc_fifo_half_full_irq_enabled(ASCState *s, int fifo)
     return false;
 }
 
+static void asc_fifo_put(ASCState *s, int fifo, uint8_t val)
+{
+    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
+
+    switch (fifo) {
+    case 0:
+        /* FIFO A */
+        s->fifo[s->a_wptr++] = val;
+        s->a_cnt++;
+
+        if (s->a_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A Half Full */
+            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+        }
+        if (s->a_cnt == 0x3ff) {
+            s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
+            asc_raise_irq(s);
+        }
+        s->a_wptr &= 0x3ff;
+        break;
+
+    case 1:
+        /* FIFO B */
+        s->fifo[s->b_wptr++ + 0x400] = val;
+        s->b_cnt++;
+
+        if (s->b_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 4;
+            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+        }
+        if (s->b_cnt == 0x3ff) {
+            s->regs[ASC_FIFOIRQ] |= 8; /* FIFO A Full */
+            asc_raise_irq(s);
+        }
+        s->b_wptr &= 0x3ff;
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static bool asc_fifo_get(ASCState *s, int fifo, uint8_t *val)
+{
+    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
+    bool res = true;
+
+    switch (fifo) {
+    case 0:
+        /* FIFO A */
+        *val = s->fifo[s->a_rptr];
+        if (s->a_cnt) {
+            s->a_rptr++;
+            s->a_rptr &= 0x3ff;
+            s->a_cnt--;
+        } else {
+            res = false;
+        }
+
+        if (s->a_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A less than half full */
+            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+            if (s->a_cnt == 0) {
+                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A empty */
+                asc_raise_irq(s);
+            }
+        }
+        break;
+
+    case 1:
+        *val = s->fifo[s->b_rptr + 0x400];
+        if (s->b_cnt) {
+            s->b_rptr++;
+            s->b_rptr &= 0x3ff;
+            s->b_cnt--;
+        } else {
+            res = false;
+        }
+
+        if (s->b_cnt <= 0x1ff) {
+            s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B less than half full */
+            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
+                asc_raise_irq(s);
+            }
+            if (s->b_cnt == 0) {
+                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B empty */
+                asc_raise_irq(s);
+            }
+        }
+        break;
+
+    default:
+        g_assert_not_reached();
+    }
+
+    return res;
+}
+
 static inline uint32_t get_phase(ASCState *s, int channel)
 {
     return be32_to_cpu(*(uint32_t *)(s->regs + ASC_WAVETABLE + channel * 8));
@@ -161,61 +265,30 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 
 static void generate_fifo(ASCState *s, int samples)
 {
-    bool fifoA_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 0);
-    bool fifoB_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 1);
-    bool raise_irq = false;
     int8_t *buf = s->mixbuf + s->pos;
     int i;
 
     for (i = 0; i < samples; i++) {
+        uint8_t v;
         int8_t left, right;
+        bool res;
 
-        left = s->fifo[s->a_rptr] ^ 0x80;
-        right = s->fifo[s->b_rptr + 0x400] ^ 0x80;
-
-        if (s->a_cnt) {
-            s->a_rptr++;
-            s->a_rptr &= 0x3ff;
-            s->a_cnt--;
+        res = asc_fifo_get(s, 0, &v);
+        if (res) {
+            left = v ^ 0x80;
         } else {
             left = 0;
         }
 
-        if (s->b_cnt) {
-            s->b_rptr++;
-            s->b_rptr &= 0x3ff;
-            s->b_cnt--;
+        res = asc_fifo_get(s, 1, &v);
+        if (res) {
+            right = v ^ 0x80;
         } else {
             right = 0;
         }
 
-        if (s->a_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A less than half full */
-            if (s->a_cnt == 0x1ff && fifoA_half_irq_enabled) {
-                raise_irq = true;
-            }
-            if (s->a_cnt == 0) {
-                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A empty */
-                raise_irq = true;
-            }
-        }
-        if (s->b_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B less than half full */
-            if (s->b_cnt == 0x1ff && fifoB_half_irq_enabled) {
-                raise_irq = true;
-            }
-            if (s->b_cnt == 0) {
-                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B empty */
-                raise_irq = true;
-            }
-        }
-
         buf[i * 2] = left;
         buf[i * 2 + 1] = right;
-    }
-
-    if (raise_irq) {
-        asc_raise_irq(s);
     }
 }
 
@@ -349,43 +422,15 @@ static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
                            unsigned size)
 {
     ASCState *s = opaque;
-    bool fifoA_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 0);
-    bool fifoB_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, 1);
 
     trace_asc_write_fifo(addr, size, value);
     if (s->regs[ASC_MODE] == 1) {
         if (addr < 0x400) {
             /* FIFO A */
-            s->fifo[s->a_wptr++] = value;
-            s->a_cnt++;
-
-            if (s->a_cnt <= 0x1ff) {
-                s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A Half Full */
-                if (s->a_cnt == 0x1ff && fifoA_half_irq_enabled) {
-                    asc_raise_irq(s);
-                }
-            }
-            if (s->a_cnt == 0x3ff) {
-                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
-                asc_raise_irq(s);
-            }
-            s->a_wptr &= 0x3ff;
+            asc_fifo_put(s, 0, value);
         } else {
             /* FIFO B */
-            s->fifo[s->b_wptr++ + 0x400] = value;
-            s->b_cnt++;
-
-            if (s->b_cnt <= 0x1ff) {
-                s->regs[ASC_FIFOIRQ] |= 4;
-                if (s->b_cnt == 0x1ff && fifoB_half_irq_enabled) {
-                    asc_raise_irq(s);
-                }
-            }
-            if (s->b_cnt == 0x3ff) {
-                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO A Full */
-                asc_raise_irq(s);
-            }
-            s->b_wptr &= 0x3ff;
+            asc_fifo_put(s, 1, value);
         }
     } else {
         s->fifo[addr] = value;
