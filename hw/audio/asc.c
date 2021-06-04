@@ -263,12 +263,12 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
     return get_phase(s, channel);
 }
 
-static void generate_fifo(ASCState *s, int samples)
+static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
     int i;
 
-    for (i = 0; i < samples; i++) {
+    for (i = 0; i < maxsamples; i++) {
         uint8_t v;
         int8_t left, right;
         bool res;
@@ -290,15 +290,17 @@ static void generate_fifo(ASCState *s, int samples)
         buf[i * 2] = left;
         buf[i * 2 + 1] = right;
     }
+
+    return i;
 }
 
-static void generate_wavetable(ASCState *s, int samples)
+static int generate_wavetable(ASCState *s, int maxsamples)
 {
     int control = s->regs[ASC_WAVECTRL];
     int8_t *buf = s->mixbuf + s->pos;
     int channel, i;
 
-    for (i = 0; i < samples; i++) {
+    for (i = 0; i < maxsamples; i++) {
         int32_t left, right;
         int8_t sample;
 
@@ -326,6 +328,8 @@ static void generate_wavetable(ASCState *s, int samples)
             buf[i * 2 + 1] = sample;
         }
     }
+
+    return i;
 }
 
 static int write_audio(ASCState *s, int samples)
@@ -388,10 +392,10 @@ static void asc_out_cb(void *opaque, int free_b)
     case 0: /* Off */
         break;
     case 1: /* FIFO mode */
-        generate_fifo(s, samples);
+        samples = generate_fifo(s, samples);
         break;
     case 2: /* Wave table mode */
-        generate_wavetable(s, samples);
+        samples = generate_wavetable(s, samples);
         break;
     }
 
