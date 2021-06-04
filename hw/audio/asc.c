@@ -266,29 +266,39 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
-    int i;
+    int i = 0;
 
-    for (i = 0; i < maxsamples; i++) {
+    while (i < maxsamples) {
         uint8_t v;
         int8_t left, right;
         bool res;
 
-        res = asc_fifo_get(s, 0, &v);
-        if (res) {
-            left = v ^ 0x80;
+        left = 0;
+        right = 0;
+
+        if ((s->extregs[0x8] & 0x83) == 0x82) {
+            asc_fifo_get(s, 0, &v);
+            fprintf(stderr, "##### L: CD-XA 0x%x\n", s->extregs[0x8]);
         } else {
-            left = 0;
+            res = asc_fifo_get(s, 0, &v);
+            if (res) {
+                left = v ^ 0x80;
+            }
         }
 
-        res = asc_fifo_get(s, 1, &v);
-        if (res) {
-            right = v ^ 0x80;
+        if ((s->extregs[0x28] & 0x83) == 0x82) {
+            asc_fifo_get(s, 1, &v);
+            fprintf(stderr, "##### R: CD-XA 0x%x\n", s->extregs[0x28]);
         } else {
-            right = 0;
+            res = asc_fifo_get(s, 1, &v);
+            if (res) {
+                right = v ^ 0x80;
+            }
         }
 
         buf[i * 2] = left;
         buf[i * 2 + 1] = right;
+        i++;
     }
 
     return i;
@@ -298,9 +308,9 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 {
     int control = s->regs[ASC_WAVECTRL];
     int8_t *buf = s->mixbuf + s->pos;
-    int channel, i;
+    int channel, i = 0;
 
-    for (i = 0; i < maxsamples; i++) {
+    while (i < maxsamples) {
         int32_t left, right;
         int8_t sample;
 
@@ -327,6 +337,7 @@ static int generate_wavetable(ASCState *s, int maxsamples)
             buf[i * 2] = sample;
             buf[i * 2 + 1] = sample;
         }
+        i++;
     }
 
     return i;
