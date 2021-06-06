@@ -266,20 +266,64 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
-    int i = 0, lc = 0, rc = 0;
+    int i = 0, j = 0, lc = 0, rc = 0;
 
     while (i < maxsamples) {
-        uint8_t v;
+        uint8_t v, flags;
         int8_t left, right;
+        int16_t d, f0, f1;
+        int32_t t;
+        int shift, filter;
         bool res;
 
         left = 0;
         right = 0;
 
-        if ((s->extregs[0x8] & 0x83) == 0x81) {
-            asc_fifo_get(s, 0, &v);
-            fprintf(stderr, "##### L: CD-XA 0x%x\n", s->extregs[0x8]);
+        if ((s->extregs[0x8] & 0x83) == 0x82) {
+            /*
+             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
+             * for a complete packet
+             */
+            if (s->a_cnt < 15) {
+                return i;
+            }
+
+            res = asc_fifo_get(s, 0, &flags);
+            if (res) {
+                shift = flags & 0xf;
+                filter = flags >> 4;
+                f0 = (int8_t)s->extregs[0x10 + (filter << 1) + 1];
+                f1 = (int8_t)s->extregs[0x10 + (filter << 1)];
+
+                for (j = 0; j < 28; j++) {
+                    if ((j & 1) == 0) {
+                        res = asc_fifo_get(s, 0, &v);
+                        if (!res) {
+                            break;
+                        }
+                        d = (v & 0xf) << 12;
+                    } else {
+                        d = (v & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((s->xa_lastA[0] * f0) + (s->xa_lastA[1] * f1) + 32) >> 6);
+                    if (t < -32768) {
+                        t = -32768;
+                    } else if (t > 32768) {
+                        t = 32768;
+                    }
+                    /*
+                     * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
+                     * writing to buffer. Does real hardware do the same?
+                     */
+                    buf[lc * 2] = (int8_t)(t / 256);
+                    lc++;
+
+                    s->xa_lastA[1] = s->xa_lastA[0];
+                    s->xa_lastA[0] = (int16_t)t;
+                }
+            }
         } else {
+            /* Raw mode */
             res = asc_fifo_get(s, 0, &v);
             if (res) {
                 left = v ^ 0x80;
@@ -288,10 +332,51 @@ static int generate_fifo(ASCState *s, int maxsamples)
             lc++;
         }
 
-        if ((s->extregs[0x28] & 0x83) == 0x81) {
-            asc_fifo_get(s, 1, &v);
-            fprintf(stderr, "##### R: CD-XA 0x%x\n", s->extregs[0x28]);
+        if ((s->extregs[0x28] & 0x83) == 0x82) {
+            /*
+             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
+             * for a complete packet
+             */
+            if (s->b_cnt < 15) {
+                return i;
+            }
+
+            res = asc_fifo_get(s, 1, &flags);
+            if (res) {
+                shift = flags & 0xf;
+                filter = flags >> 4;
+                f0 = (int8_t)s->extregs[0x30 + (filter << 1) + 1];
+                f1 = (int8_t)s->extregs[0x30 + (filter << 1)];
+
+                for (j = 0; j < 28; j++) {
+                    if ((j & 1) == 0) {
+                        res = asc_fifo_get(s, 1, &v);
+                        if (!res) {
+                            break;
+                        }
+                        d = (v & 0xf) << 12;
+                    } else {
+                        d = (v & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((s->xa_lastB[0] * f0) + (s->xa_lastB[1] * f1) + 32) >> 6);
+                    if (t < -32768) {
+                        t = -32768;
+                    } else if (t > 32768) {
+                        t = 32768;
+                    }
+                    /*
+                     * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
+                     * writing to buffer. Does real hardware do the same?
+                     */
+                    buf[rc * 2 + 1] = (int8_t)(t / 256);
+                    rc++;
+
+                    s->xa_lastB[1] = s->xa_lastB[0];
+                    s->xa_lastB[0] = (int16_t)t;
+                }
+            }
         } else {
+            /* Raw mode */
             res = asc_fifo_get(s, 1, &v);
             if (res) {
                 right = v ^ 0x80;

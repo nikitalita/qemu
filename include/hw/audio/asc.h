@@ -42,6 +42,8 @@ struct ASCState {
     uint8_t type;
     int a_wptr, a_rptr, a_cnt;
     int b_wptr, b_rptr, b_cnt;
+    int16_t xa_lastA[2];
+    int16_t xa_lastB[2];
 
     uint8_t *fifo;
 
