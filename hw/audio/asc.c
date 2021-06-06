@@ -266,7 +266,7 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
-    int i = 0;
+    int i = 0, lc = 0, rc = 0;
 
     while (i < maxsamples) {
         uint8_t v;
@@ -276,7 +276,7 @@ static int generate_fifo(ASCState *s, int maxsamples)
         left = 0;
         right = 0;
 
-        if ((s->extregs[0x8] & 0x83) == 0x82) {
+        if ((s->extregs[0x8] & 0x83) == 0x81) {
             asc_fifo_get(s, 0, &v);
             fprintf(stderr, "##### L: CD-XA 0x%x\n", s->extregs[0x8]);
         } else {
@@ -284,9 +284,11 @@ static int generate_fifo(ASCState *s, int maxsamples)
             if (res) {
                 left = v ^ 0x80;
             }
+            buf[lc * 2] = left;
+            lc++;
         }
 
-        if ((s->extregs[0x28] & 0x83) == 0x82) {
+        if ((s->extregs[0x28] & 0x83) == 0x81) {
             asc_fifo_get(s, 1, &v);
             fprintf(stderr, "##### R: CD-XA 0x%x\n", s->extregs[0x28]);
         } else {
@@ -294,11 +296,11 @@ static int generate_fifo(ASCState *s, int maxsamples)
             if (res) {
                 right = v ^ 0x80;
             }
+            buf[rc * 2 + 1] = right;
+            rc++;
         }
 
-        buf[i * 2] = left;
-        buf[i * 2 + 1] = right;
-        i++;
+        i = MAX(lc, rc);
     }
 
     return i;
