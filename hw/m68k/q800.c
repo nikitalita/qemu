@@ -442,7 +442,7 @@ static void q800_init(MachineState *machine)
     /* Apple Sound Chip */
 
     dev = qdev_new(TYPE_ASC);
-    qdev_prop_set_uint8(dev, "asctype", ASC_TYPE_ASC);
+    qdev_prop_set_uint8(dev, "asctype", ASC_TYPE_EASC);
     sysbus = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(sysbus, &error_fatal);
     memory_region_add_subregion(&m->macio, ASC_BASE - IO_BASE,
