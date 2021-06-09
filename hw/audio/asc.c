@@ -266,10 +266,10 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
-    int i = 0, j = 0, lc = 0, rc = 0;
+    int i = 0, lc = 0, rc = 0;
 
     while (i < maxsamples) {
-        uint8_t v, flags;
+        uint8_t v;
         int8_t left, right;
         int16_t d, f0, f1;
         int32_t t;
@@ -284,28 +284,32 @@ static int generate_fifo(ASCState *s, int maxsamples)
              * CD-XA BRR mode: exit if there isn't enough data in the FIFO
              * for a complete packet
              */
-            if (s->a_cnt < 15) {
-                return i;
+            if (s->xa_acnt == -1) {
+                res = asc_fifo_get(s, 0, &s->xa_aflags);
+                if (!res) {
+                    buf[lc * 2] = left;
+                    lc++;
+                } else {
+                    s->xa_acnt = 0;
+                }
             }
 
-            res = asc_fifo_get(s, 0, &flags);
-            if (res) {
-                shift = flags & 0xf;
-                filter = flags >> 4;
+            if (s->xa_acnt != -1) {
+                shift = s->xa_aflags & 0xf;
+                filter = s->xa_aflags >> 4;
                 f0 = (int8_t)s->extregs[0x10 + (filter << 1) + 1];
                 f1 = (int8_t)s->extregs[0x10 + (filter << 1)];
 
-                for (j = 0; j < 28; j++) {
-                    if ((j & 1) == 0) {
-                        res = asc_fifo_get(s, 0, &v);
+                    if ((s->xa_acnt & 1) == 0) {
+                        res = asc_fifo_get(s, 0, &s->xa_aval);
                         if (!res) {
                             break;
                         }
-                        d = (v & 0xf) << 12;
+                        d = (s->xa_aval & 0xf) << 12;
                     } else {
-                        d = (v & 0xf0) << 8;
+                        d = (s->xa_aval & 0xf0) << 8;
                     }
-                    t = (d >> shift) + (((s->xa_lastA[0] * f0) + (s->xa_lastA[1] * f1) + 32) >> 6);
+                    t = (d >> shift) + (((s->xa_alast[0] * f0) + (s->xa_alast[1] * f1) + 32) >> 6);
                     if (t < -32768) {
                         t = -32768;
                     } else if (t > 32768) {
@@ -316,11 +320,15 @@ static int generate_fifo(ASCState *s, int maxsamples)
                      * writing to buffer. Does real hardware do the same?
                      */
                     buf[lc * 2] = (int8_t)(t / 256);
+                    s->xa_acnt++;
                     lc++;
 
-                    s->xa_lastA[1] = s->xa_lastA[0];
-                    s->xa_lastA[0] = (int16_t)t;
-                }
+                    s->xa_alast[1] = s->xa_alast[0];
+                    s->xa_alast[0] = (int16_t)t;
+
+                    if (s->xa_acnt == 28) {
+                        s->xa_acnt = -1;
+                    }
             }
         } else {
             /* Raw mode */
@@ -337,28 +345,32 @@ static int generate_fifo(ASCState *s, int maxsamples)
              * CD-XA BRR mode: exit if there isn't enough data in the FIFO
              * for a complete packet
              */
-            if (s->b_cnt < 15) {
-                return i;
+            if (s->xa_bcnt == -1) {
+                res = asc_fifo_get(s, 1, &s->xa_bflags);
+                if (!res) {
+                    buf[rc * 2] = right;
+                    rc++;
+                } else {
+                    s->xa_bcnt = 0;
+                }
             }
 
-            res = asc_fifo_get(s, 1, &flags);
-            if (res) {
-                shift = flags & 0xf;
-                filter = flags >> 4;
+            if (s->xa_bcnt != -1) {
+                shift = s->xa_bflags & 0xf;
+                filter = s->xa_bflags >> 4;
                 f0 = (int8_t)s->extregs[0x30 + (filter << 1) + 1];
                 f1 = (int8_t)s->extregs[0x30 + (filter << 1)];
 
-                for (j = 0; j < 28; j++) {
-                    if ((j & 1) == 0) {
-                        res = asc_fifo_get(s, 1, &v);
+                    if ((s->xa_bcnt & 1) == 0) {
+                        res = asc_fifo_get(s, 1, &s->xa_bval);
                         if (!res) {
                             break;
                         }
-                        d = (v & 0xf) << 12;
+                        d = (s->xa_bval & 0xf) << 12;
                     } else {
-                        d = (v & 0xf0) << 8;
+                        d = (s->xa_bval & 0xf0) << 8;
                     }
-                    t = (d >> shift) + (((s->xa_lastB[0] * f0) + (s->xa_lastB[1] * f1) + 32) >> 6);
+                    t = (d >> shift) + (((s->xa_blast[0] * f0) + (s->xa_blast[1] * f1) + 32) >> 6);
                     if (t < -32768) {
                         t = -32768;
                     } else if (t > 32768) {
@@ -369,12 +381,17 @@ static int generate_fifo(ASCState *s, int maxsamples)
                      * writing to buffer. Does real hardware do the same?
                      */
                     buf[rc * 2 + 1] = (int8_t)(t / 256);
+                    s->xa_bcnt++;
                     rc++;
 
-                    s->xa_lastB[1] = s->xa_lastB[0];
-                    s->xa_lastB[0] = (int16_t)t;
-                }
+                    s->xa_blast[1] = s->xa_blast[0];
+                    s->xa_blast[0] = (int16_t)t;
+
+                    if (s->xa_bcnt == 28) {
+                        s->xa_bcnt = -1;
+                    }
             }
+
         } else {
             /* Raw mode */
             res = asc_fifo_get(s, 1, &v);
@@ -729,9 +746,11 @@ static void asc_reset(DeviceState *d)
     s->a_wptr = 0;
     s->a_rptr = 0;
     s->a_cnt = 0;
+    s->xa_acnt = -1;
     s->b_wptr = 0;
     s->b_rptr = 0;
     s->b_cnt = 0;
+    s->xa_bcnt = -1;
 
     /* FIFO A and B empty */
     s->regs[ASC_FIFOIRQ] = 0xf;
