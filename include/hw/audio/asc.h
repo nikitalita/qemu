@@ -24,9 +24,39 @@ enum {
     ASC_TYPE_ARDBEG = 7,  /* ASC included in the Ardbeg ASIC (LC520) */
 };
 
+#define ASC_FIFO_OFFSET    0x0
+#define ASC_FIFO_SIZE      0x400
+
+#define ASC_REG_OFFSET     0x800
+#define ASC_REG_SIZE       0x60
+
+#define ASC_EXTREG_OFFSET  0xf00
+#define ASC_EXTREG_SIZE    0x20
+
+typedef struct ASCFIFOState {
+    int index;
+
+    MemoryRegion mem_fifo;
+    uint8_t fifo[0x400];
+    uint8_t int_status;
+
+    int cnt;
+    int wptr;
+    int rptr;
+
+    MemoryRegion mem_extregs;
+    uint8_t extregs[0x20];
+
+    int xa_cnt;
+    uint8_t xa_val;
+    uint8_t xa_flags;
+    int16_t xa_last[2];
+} ASCFIFOState;
+
 struct ASCState {
     SysBusDevice parent_obj;
 
+    uint8_t type;
     MemoryRegion asc;
     MemoryRegion mem_fifo;
     MemoryRegion mem_regs;
@@ -39,21 +69,7 @@ struct ASCState {
 
     qemu_irq irq;
 
-    uint8_t type;
-    int a_wptr, a_rptr, a_cnt;
-    int b_wptr, b_rptr, b_cnt;
-
-    int xa_acnt;
-    uint8_t xa_aval;
-    uint8_t xa_aflags;
-    int16_t xa_alast[2];
-
-    int xa_bcnt;
-    uint8_t xa_bval;
-    uint8_t xa_bflags;
-    int16_t xa_blast[2];
-
-    uint8_t *fifo;
+    ASCFIFOState fifos[2];
 
     uint8_t regs[64];
     uint8_t extregs[64];

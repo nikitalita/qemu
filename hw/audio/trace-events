@@ -13,11 +13,10 @@ hda_audio_adjust(const char *stream, int pos) "st %s, pos %d"
 hda_audio_overrun(const char *stream) "st %s"
 
 # asc.c
-asc_read_fifo(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
+asc_read_fifo(const char fifo, int reg, unsigned size, uint64_t value) "fifo %c reg=0x%03x size=%u value=0x%"PRIx64
 asc_read_reg(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
-asc_read_extreg(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
-asc_write_fifo(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
+asc_read_extreg(const char fifo, int reg, unsigned size, uint64_t value) "fifo %c reg=0x%03x size=%u value=0x%"PRIx64
+asc_write_fifo(const char fifo, int reg, unsigned size, uint64_t value) "fifo %c reg=0x%03x size=%u value=0x%"PRIx64
 asc_write_reg(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
-asc_write_extreg(int reg, unsigned size, uint64_t value) "reg=0x%03x size=%u value=0x%"PRIx64
-asc_raise_irq(void) "raise IRQ"
-asc_lower_irq(void) "lower IRQ"
+asc_write_extreg(const char fifo, int reg, unsigned size, uint64_t value) "fifo %c reg=0x%03x size=%u value=0x%"PRIx64
+asc_update_irq(int irq) "set IRQ to %d"

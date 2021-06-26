@@ -80,15 +80,6 @@
 
 #define ASC_SIZE           0x2000
 
-#define ASC_FIFO_OFFSET    0x0
-#define ASC_FIFO_SIZE      0x800
-
-#define ASC_REG_OFFSET     0x800
-#define ASC_REG_SIZE       0x60
-
-#define ASC_EXTREG_OFFSET  0xf00
-#define ASC_EXTREG_SIZE    0x40
-
 enum {
     ASC_VERSION     = 0x00,
     ASC_MODE        = 0x01,
@@ -103,135 +94,49 @@ enum {
     ASC_WAVETABLE   = 0x10
 };
 
-static void asc_raise_irq(ASCState *s)
+#define ASC_FIFO_STATUS_HALF_FULL      1
+#define ASC_FIFO_STATUS_FULL_EMPTY     2
+
+#define ASC_EXTREGS_FIFOCTRL           0x8
+#define ASC_EXTREGS_INTCTRL            0x9
+#define ASC_EXTREGS_CDXA_DECOMP_FILT   0x10
+
+static void asc_update_irq(ASCState *s)
 {
-    trace_asc_raise_irq();
-    qemu_irq_raise(s->irq);
+    int irqA = s->fifos[0].int_status;
+    int irqB = s->fifos[1].int_status;
+    int irq = irqA || irqB;
+
+    trace_asc_update_irq(irq);
+    qemu_set_irq(s->irq, irq);
 }
 
-static void asc_lower_irq(ASCState *s)
+static bool asc_fifo_get(ASCFIFOState *fs, uint8_t *val)
 {
-    trace_asc_lower_irq();
-    qemu_irq_lower(s->irq);
-}
-
-static inline bool asc_fifo_half_full_irq_enabled(ASCState *s, int fifo)
-{
-    int ireg;
-
-    /* ASC half full irq always enabled */
-    if (s->type == ASC_TYPE_ASC) {
-        return true;
-    }
-
-    /* Otherwise check the bit in the extreg */
-    ireg = (fifo == 0) ? 0x9 : 0x29;
-    if (s->extregs[ireg] & 1) {
-        return true;
-    }
-
-    return false;
-}
-
-static void asc_fifo_put(ASCState *s, int fifo, uint8_t val)
-{
-    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
-
-    switch (fifo) {
-    case 0:
-        /* FIFO A */
-        s->fifo[s->a_wptr++] = val;
-        s->a_cnt++;
-
-        if (s->a_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A Half Full */
-            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
-                asc_raise_irq(s);
-            }
-        }
-        if (s->a_cnt == 0x3ff) {
-            s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A Full */
-            asc_raise_irq(s);
-        }
-        s->a_wptr &= 0x3ff;
-        break;
-
-    case 1:
-        /* FIFO B */
-        s->fifo[s->b_wptr++ + 0x400] = val;
-        s->b_cnt++;
-
-        if (s->b_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 4;
-            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
-                asc_raise_irq(s);
-            }
-        }
-        if (s->b_cnt == 0x3ff) {
-            s->regs[ASC_FIFOIRQ] |= 8; /* FIFO A Full */
-            asc_raise_irq(s);
-        }
-        s->b_wptr &= 0x3ff;
-        break;
-
-    default:
-        g_assert_not_reached();
-    }
-}
-
-static bool asc_fifo_get(ASCState *s, int fifo, uint8_t *val)
-{
-    bool fifo_half_irq_enabled = asc_fifo_half_full_irq_enabled(s, fifo);
+    ASCState *s = container_of(fs, ASCState, fifos[fs->index]);
+    //bool fifo_half_irq_enabled = fs->extregs[ASC_EXTREGS_INTCTRL] & 1;
     bool res = true;
 
-    switch (fifo) {
-    case 0:
-        /* FIFO A */
-        *val = s->fifo[s->a_rptr];
-        if (s->a_cnt) {
-            s->a_rptr++;
-            s->a_rptr &= 0x3ff;
-            s->a_cnt--;
-        } else {
-            res = false;
-        }
+    *val = fs->fifo[fs->rptr];
+    if (fs->cnt) {
+        fs->rptr++;
+        fs->rptr &= 0x3ff;
+        fs->cnt--;
+    } else {
+        res = false;
+    }
 
-        if (s->a_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 1; /* FIFO A less than half full */
-            if (s->a_cnt == 0x1ff && fifo_half_irq_enabled) {
-                asc_raise_irq(s);
-            }
-            if (s->a_cnt == 0) {
-                s->regs[ASC_FIFOIRQ] |= 2; /* FIFO A empty */
-                asc_raise_irq(s);
-            }
+    if (fs->cnt <= 0x1ff) {
+        /* FIFO less than half full */
+        fs->int_status |= ASC_FIFO_STATUS_HALF_FULL;
+        //if (fs->cnt == 0x1ff && fifo_half_irq_enabled) {
+        //    asc_raise_irq(s);
+        //}
+        if (fs->cnt == 0) {
+            /* FIFO empty */
+            fs->int_status |= ASC_FIFO_STATUS_FULL_EMPTY;
+            asc_update_irq(s);
         }
-        break;
-
-    case 1:
-        *val = s->fifo[s->b_rptr + 0x400];
-        if (s->b_cnt) {
-            s->b_rptr++;
-            s->b_rptr &= 0x3ff;
-            s->b_cnt--;
-        } else {
-            res = false;
-        }
-
-        if (s->b_cnt <= 0x1ff) {
-            s->regs[ASC_FIFOIRQ] |= 4; /* FIFO B less than half full */
-            if (s->b_cnt == 0x1ff && fifo_half_irq_enabled) {
-                asc_raise_irq(s);
-            }
-            if (s->b_cnt == 0) {
-                s->regs[ASC_FIFOIRQ] |= 8; /* FIFO B empty */
-                asc_raise_irq(s);
-            }
-        }
-        break;
-
-    default:
-        g_assert_not_reached();
     }
 
     return res;
@@ -266,50 +171,59 @@ static inline uint32_t incr_phase(ASCState *s, int channel)
 static int generate_fifo(ASCState *s, int maxsamples)
 {
     int8_t *buf = s->mixbuf + s->pos;
-    int i = 0, lc = 0, rc = 0;
+    int i, limit, count = 0;
 
-    while (i < maxsamples) {
+    //limit = MIN(s->fifos[0].cnt, s->fifos[1].cnt);
+    //limit = MIN(limit, maxsamples);
+    limit = maxsamples;
+    while (count < limit) {
         uint8_t v;
-        int8_t left, right;
+        int8_t val;
         int16_t d, f0, f1;
         int32_t t;
         int shift, filter;
         bool res;
 
-        left = 0;
-        right = 0;
+        val = 0;
 
-        if ((s->extregs[0x8] & 0x83) == 0x82) {
-            /*
-             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
-             * for a complete packet
-             */
-            if (s->xa_acnt == -1) {
-                res = asc_fifo_get(s, 0, &s->xa_aflags);
-                if (!res) {
-                    buf[lc * 2] = left;
-                    lc++;
-                } else {
-                    s->xa_acnt = 0;
-                }
-            }
+        for (i = 0; i < 2; i++) {
+            ASCFIFOState *fs = &s->fifos[i];
 
-            if (s->xa_acnt != -1) {
-                shift = s->xa_aflags & 0xf;
-                filter = s->xa_aflags >> 4;
-                f0 = (int8_t)s->extregs[0x10 + (filter << 1) + 1];
-                f1 = (int8_t)s->extregs[0x10 + (filter << 1)];
-
-                    if ((s->xa_acnt & 1) == 0) {
-                        res = asc_fifo_get(s, 0, &s->xa_aval);
-                        if (!res) {
-                            break;
-                        }
-                        d = (s->xa_aval & 0xf) << 12;
+            switch (fs->extregs[ASC_EXTREGS_FIFOCTRL] & 0x83) {
+            case 0x82:
+                /*
+                 * CD-XA BRR mode: exit if there isn't enough data in the FIFO
+                 * for a complete packet
+                 */
+                if (fs->xa_cnt == -1) {
+                    res = asc_fifo_get(fs, &fs->xa_flags);
+                    if (!res) {
+                        /* Check both channels */
+                        continue;
                     } else {
-                        d = (s->xa_aval & 0xf0) << 8;
+                        fs->xa_cnt = 0;
                     }
-                    t = (d >> shift) + (((s->xa_alast[0] * f0) + (s->xa_alast[1] * f1) + 32) >> 6);
+                }
+
+                if (fs->xa_cnt != -1) {
+                    shift = fs->xa_flags & 0xf;
+                    filter = fs->xa_flags >> 4;
+                    f0 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
+                                             (filter << 1) + 1];
+                    f1 = (int8_t)fs->extregs[ASC_EXTREGS_CDXA_DECOMP_FILT +
+                                             (filter << 1)];
+                    if ((fs->xa_cnt & 1) == 0) {
+                        res = asc_fifo_get(fs, &fs->xa_val);
+                        if (!res) {
+                            /* Check both channels */
+                            continue;
+                        }
+                        d = (fs->xa_val & 0xf) << 12;
+                    } else {
+                        d = (fs->xa_val & 0xf0) << 8;
+                    }
+                    t = (d >> shift) + (((fs->xa_last[0] * f0) +
+                                         (fs->xa_last[1] * f1) + 32) >> 6);
                     if (t < -32768) {
                         t = -32768;
                     } else if (t > 32768) {
@@ -319,102 +233,51 @@ static int generate_fifo(ASCState *s, int maxsamples)
                      * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
                      * writing to buffer. Does real hardware do the same?
                      */
-                    buf[lc * 2] = (int8_t)(t / 256);
-                    s->xa_acnt++;
-                    lc++;
+                    buf[count * 2 + i] = (int8_t)(t / 256);
+                    fs->xa_cnt++;
 
-                    s->xa_alast[1] = s->xa_alast[0];
-                    s->xa_alast[0] = (int16_t)t;
+                    fs->xa_last[1] = fs->xa_last[0];
+                    fs->xa_last[0] = (int16_t)t;
 
-                    if (s->xa_acnt == 28) {
-                        s->xa_acnt = -1;
+                    if (fs->xa_cnt == 28) {
+                        fs->xa_cnt = -1;
                     }
-            }
-        } else {
-            /* Raw mode */
-            res = asc_fifo_get(s, 0, &v);
-            if (res) {
-                left = v ^ 0x80;
-            }
-            buf[lc * 2] = left;
-            lc++;
-        }
-
-        if ((s->extregs[0x28] & 0x83) == 0x82) {
-            /*
-             * CD-XA BRR mode: exit if there isn't enough data in the FIFO
-             * for a complete packet
-             */
-            if (s->xa_bcnt == -1) {
-                res = asc_fifo_get(s, 1, &s->xa_bflags);
-                if (!res) {
-                    buf[rc * 2] = right;
-                    rc++;
-                } else {
-                    s->xa_bcnt = 0;
                 }
+                break;
+
+            default:
+                /* fallthrough */
+            case 0x80:
+                /* Raw mode */
+                res = asc_fifo_get(fs, &v);
+                if (!res) {
+                    /* Check both channels */
+                    continue;
+                } else {
+                    val = v ^ 0x80;
+                    buf[count * 2 + i] = val;
+                }
+                break;
             }
-
-            if (s->xa_bcnt != -1) {
-                shift = s->xa_bflags & 0xf;
-                filter = s->xa_bflags >> 4;
-                f0 = (int8_t)s->extregs[0x30 + (filter << 1) + 1];
-                f1 = (int8_t)s->extregs[0x30 + (filter << 1)];
-
-                    if ((s->xa_bcnt & 1) == 0) {
-                        res = asc_fifo_get(s, 1, &s->xa_bval);
-                        if (!res) {
-                            break;
-                        }
-                        d = (s->xa_bval & 0xf) << 12;
-                    } else {
-                        d = (s->xa_bval & 0xf0) << 8;
-                    }
-                    t = (d >> shift) + (((s->xa_blast[0] * f0) + (s->xa_blast[1] * f1) + 32) >> 6);
-                    if (t < -32768) {
-                        t = -32768;
-                    } else if (t > 32768) {
-                        t = 32768;
-                    }
-                    /*
-                     * CD-XA BRR generates 16-bit signed output, so convert to 8-bit before
-                     * writing to buffer. Does real hardware do the same?
-                     */
-                    buf[rc * 2 + 1] = (int8_t)(t / 256);
-                    s->xa_bcnt++;
-                    rc++;
-
-                    s->xa_blast[1] = s->xa_blast[0];
-                    s->xa_blast[0] = (int16_t)t;
-
-                    if (s->xa_bcnt == 28) {
-                        s->xa_bcnt = -1;
-                    }
-            }
-
-        } else {
-            /* Raw mode */
-            res = asc_fifo_get(s, 1, &v);
-            if (res) {
-                right = v ^ 0x80;
-            }
-            buf[rc * 2 + 1] = right;
-            rc++;
         }
 
-        i = MAX(lc, rc);
+        if (!res) {
+            break;
+        }
+
+        count++;
     }
 
-    return i;
+    return count;
 }
 
 static int generate_wavetable(ASCState *s, int maxsamples)
 {
     int control = s->regs[ASC_WAVECTRL];
     int8_t *buf = s->mixbuf + s->pos;
-    int channel, i = 0;
+    int channel, count = 0;
 
-    while (i < maxsamples) {
+    while (count < maxsamples) {
         int32_t left, right;
         int8_t sample;
 
@@ -423,28 +286,33 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 
         if (control) { /* FIXME: how to use it ? */
             for (channel = 0; channel < 4; channel++) {
+                ASCFIFOState *fs = &s->fifos[channel >> 1];
                 uint32_t phase = incr_phase(s, channel);
 
                 phase = (phase >> 15) & 0x1ff;
-                sample = s->fifo[0x200 * channel + phase] ^ 0x80;
+                sample = fs->fifo[0x200 * (channel >> 1) + phase] ^ 0x80;
 
                 left += sample;
                 right += sample;
             }
-            buf[i * 2] = left >> 2;
-            buf[i * 2 + 1] = right >> 2;
+            buf[count * 2] = left >> 2;
+            buf[count * 2 + 1] = right >> 2;
         } else {
             /* FIXME: only works with linux macboing.c */
             uint32_t phase = incr_phase(s, 0);
-            phase = (phase >> 15) & 0x7ff;
-            sample = s->fifo[phase];
-            buf[i * 2] = sample;
-            buf[i * 2 + 1] = sample;
+            ASCFIFOState *fs;
+
+            phase = (phase >> 15) & 0x3ff;
+            fs = &s->fifos[phase >> 11];
+
+            sample = fs->fifo[phase];
+            buf[count * 2] = sample;
+            buf[count * 2 + 1] = sample;
         }
-        i++;
+        count++;
     }
 
-    return i;
+    return count;
 }
 
 static int write_audio(ASCState *s, int samples)
@@ -531,28 +399,40 @@ static void asc_out_cb(void *opaque, int free_b)
 static uint64_t asc_fifo_read(void *opaque, hwaddr addr,
                               unsigned size)
 {
-    ASCState *s = opaque;
+    ASCFIFOState *fs = opaque;
 
-    trace_asc_read_fifo(addr, size, s->fifo[addr]);
-    return s->fifo[addr];
+    trace_asc_read_fifo('A' + fs->index, addr, size, fs->fifo[addr]);
+    return fs->fifo[addr];
 }
 
 static void asc_fifo_write(void *opaque, hwaddr addr, uint64_t value,
                            unsigned size)
 {
-    ASCState *s = opaque;
+    ASCFIFOState *fs = opaque;
+    ASCState *s = container_of(fs, ASCState, fifos[fs->index]);
+    //bool fifo_half_irq_enabled = fs->extregs[ASC_EXTREGS_INTCTRL] & 1;
 
-    trace_asc_write_fifo(addr, size, value);
+    trace_asc_write_fifo('A' + fs->index, addr, size, value);
+
     if (s->regs[ASC_MODE] == 1) {
-        if (addr < 0x400) {
-            /* FIFO A */
-            asc_fifo_put(s, 0, value);
-        } else {
-            /* FIFO B */
-            asc_fifo_put(s, 1, value);
+        fs->fifo[fs->wptr++] = value;
+        fs->cnt++;
+
+        if (fs->cnt <= 0x1ff) {
+            /* FIFO Half Full */
+            fs->int_status |= ASC_FIFO_STATUS_HALF_FULL;
+            //if (fs->cnt == 0x1ff && fifo_half_irq_enabled) {
+            //    asc_raise_irq(s);
+            //}
         }
+        if (fs->cnt == 0x3ff) {
+            /* FIFO Full */
+            fs->int_status |= ASC_FIFO_STATUS_FULL_EMPTY;
+            asc_update_irq(s);
+        }
+        fs->wptr &= 0x3ff;
     } else {
-        s->fifo[addr] = value;
+        fs->fifo[addr] = value;
     }
     return;
 }
@@ -566,6 +446,8 @@ static const MemoryRegionOps asc_fifo_ops = {
     },
     .endianness = DEVICE_BIG_ENDIAN,
 };
+
+static void asc_fifo_reset(ASCFIFOState *fs);
 
 static uint64_t asc_read(void *opaque, hwaddr addr,
                          unsigned size)
@@ -624,10 +506,12 @@ static uint64_t asc_read(void *opaque, hwaddr addr,
         if (s->type == ASC_TYPE_V8) {
             prev = 3;
         } else {
-            prev = s->regs[ASC_FIFOIRQ];
+            prev = (s->fifos[0].int_status & 0x3) |
+                   (s->fifos[1].int_status & 0x3) << 2;
         }
-        s->regs[ASC_FIFOIRQ] = 0;
-        asc_lower_irq(s);
+        s->fifos[0].int_status = 0;
+        s->fifos[1].int_status = 0;
+        asc_update_irq(s);
         value = prev;
         break;
     default:
@@ -648,12 +532,8 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
     case ASC_MODE:
         value &= 3;
         if (value != s->regs[ASC_MODE]) {
-            s->a_rptr = 0;
-            s->a_wptr = 0;
-            s->a_cnt = 0;
-            s->b_rptr = 0;
-            s->b_wptr = 0;
-            s->b_cnt = 0;
+            asc_fifo_reset(&s->fifos[0]);
+            asc_fifo_reset(&s->fifos[1]);
             if (value != 0) {
                 AUD_set_active_out(s->voice, 1);
             } else {
@@ -663,12 +543,8 @@ static void asc_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case ASC_FIFOMODE:
         if (value & 0x80) {
-            s->a_rptr = 0;
-            s->a_wptr = 0;
-            s->a_cnt = 0;
-            s->b_rptr = 0;
-            s->b_wptr = 0;
-            s->b_cnt = 0;
+            asc_fifo_reset(&s->fifos[0]);
+            asc_fifo_reset(&s->fifos[1]);
         }
         break;
     case ASC_WAVECTRL:
@@ -692,22 +568,22 @@ static const MemoryRegionOps asc_regs_ops = {
 static uint64_t asc_ext_read(void *opaque, hwaddr addr,
                              unsigned size)
 {
-    ASCState *s = opaque;
+    ASCFIFOState *fs = opaque;
     uint64_t value;
 
-    value = s->extregs[addr];
+    value = fs->extregs[addr];
 
-    trace_asc_read_extreg(addr, size, value);
+    trace_asc_read_extreg('A' + fs->index, addr, size, value);
     return value;
 }
 
 static void asc_ext_write(void *opaque, hwaddr addr, uint64_t value,
                           unsigned size)
 {
-    ASCState *s = opaque;
+    ASCFIFOState *fs = opaque;
 
-    trace_asc_write_extreg(addr, size, value);
-    s->extregs[addr] = value;
+    trace_asc_write_extreg('A' + fs->index, addr, size, value);
+    fs->extregs[addr] = value;
 }
 
 static const MemoryRegionOps asc_extregs_ops = {
@@ -736,6 +612,33 @@ static const VMStateDescription vmstate_asc = {
     }
 };
 
+static void asc_fifo_reset(ASCFIFOState *fs)
+{
+    fs->wptr = 0;
+    fs->rptr = 0;
+    fs->cnt = 0;
+    fs->xa_cnt = -1;
+
+    fs->int_status = ASC_FIFO_STATUS_FULL_EMPTY;
+}
+
+static void asc_fifo_init(ASCFIFOState *fs, int index)
+{
+    ASCState *s = container_of(fs, ASCState, fifos[index]);
+    char *name;
+
+    fs->index = index;
+    name = g_strdup_printf("asc.fifo%c", 'A' + index);
+    memory_region_init_io(&fs->mem_fifo, OBJECT(s), &asc_fifo_ops, fs,
+                          name, ASC_FIFO_SIZE);
+    g_free(name);
+
+    name = g_strdup_printf("asc.extregs%c", 'A' + index);
+    memory_region_init_io(&fs->mem_extregs, OBJECT(s), &asc_extregs_ops,
+                          fs, name, ASC_EXTREG_SIZE);
+    g_free(name);
+}
+
 static void asc_reset(DeviceState *d)
 {
     ASCState *s = ASC(d);
@@ -743,17 +646,14 @@ static void asc_reset(DeviceState *d)
     AUD_set_active_out(s->voice, 0);
 
     memset(s->regs, 0, sizeof(s->regs));
-    s->a_wptr = 0;
-    s->a_rptr = 0;
-    s->a_cnt = 0;
-    s->xa_acnt = -1;
-    s->b_wptr = 0;
-    s->b_rptr = 0;
-    s->b_cnt = 0;
-    s->xa_bcnt = -1;
+    asc_fifo_reset(&s->fifos[0]);
+    asc_fifo_reset(&s->fifos[1]);
 
-    /* FIFO A and B empty */
-    s->regs[ASC_FIFOIRQ] = 0xf;
+    if (s->type == ASC_TYPE_ASC) {
+        /* FIFO half full IRQs enabled by default */
+        s->fifos[0].extregs[ASC_EXTREGS_INTCTRL] = 1;
+        s->fifos[1].extregs[ASC_EXTREGS_INTCTRL] = 1;
+    }
 }
 
 static void asc_unrealize(DeviceState *dev)
@@ -761,7 +661,6 @@ static void asc_unrealize(DeviceState *dev)
     ASCState *s = ASC(dev);
 
     g_free(s->mixbuf);
-    g_free(s->fifo);
 
     AUD_remove_card(&s->card);
 }
@@ -784,14 +683,12 @@ static void asc_realize(DeviceState *dev, Error **errp)
     s->samples = AUD_get_buffer_size_out(s->voice) >> s->shift;
     s->mixbuf = g_malloc0(s->samples << s->shift);
 
-    s->fifo = g_malloc0(ASC_FIFO_SIZE);
-
     /* Add easc registers if required */
     if (s->type == ASC_TYPE_EASC) {
-        memory_region_init_io(&s->mem_extregs, OBJECT(s), &asc_extregs_ops,
-                              s, "asc.extregs", ASC_EXTREG_OFFSET);
         memory_region_add_subregion(&s->asc, ASC_EXTREG_OFFSET,
-                                    &s->mem_extregs);
+                                    &s->fifos[0].mem_extregs);
+        memory_region_add_subregion(&s->asc, ASC_EXTREG_OFFSET + ASC_EXTREG_SIZE,
+                                    &s->fifos[1].mem_extregs);
     }
 }
 
@@ -801,9 +698,15 @@ static void asc_init(Object *obj)
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
     memory_region_init(&s->asc, OBJECT(obj), "asc", ASC_SIZE);
-    memory_region_init_io(&s->mem_fifo, OBJECT(obj), &asc_fifo_ops, s, "asc.fifo",
-                          ASC_FIFO_SIZE);
-    memory_region_add_subregion(&s->asc, ASC_FIFO_OFFSET, &s->mem_fifo);
+
+    asc_fifo_init(&s->fifos[0], 0);
+    asc_fifo_init(&s->fifos[1], 1);
+
+    memory_region_add_subregion(&s->asc, ASC_FIFO_OFFSET,
+                                &s->fifos[0].mem_fifo);
+    memory_region_add_subregion(&s->asc, ASC_FIFO_OFFSET + ASC_FIFO_SIZE,
+                                &s->fifos[1].mem_fifo);
+
     memory_region_init_io(&s->mem_regs, OBJECT(obj), &asc_regs_ops, s, "asc.regs",
                           ASC_REG_SIZE);
     memory_region_add_subregion(&s->asc, ASC_REG_OFFSET, &s->mem_regs);

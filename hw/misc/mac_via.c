@@ -910,11 +910,6 @@ static void via1_timer_calibration_hack(MOS6522Q800VIA1State *v1s, int addr,
             /* VIA_REG_T2CL: low byte of 1ms counter */
             v1s->timer_hack_state = 1;
         }
-
-        if (addr == VIA_REG_T2CL && val == 0xf0) {
-            /* VIA_REG_T2CH: high byte of counter (AUX) */
-            m->timer_hack_state = 2;
-        }
         break;
     case 1:
         if (addr == VIA_REG_T2CH && val == 0x3) {
@@ -922,16 +917,10 @@ static void via1_timer_calibration_hack(MOS6522Q800VIA1State *v1s, int addr,
              * VIA_REG_T2CH: high byte of 1ms counter (very likely at the
              * start of SETUPTIMEK)
              */
-            v1s->timer_hack_state = 3;
+            v1s->timer_hack_state = 2;
         }
         break;
     case 2:
-        if (addr == VIA_REG_T2CH && val == 0x3c) {
-            /* VIA_REG_T2CL: low byte of counter (AUX) */
-            v1s->timer_hack_state = 3;
-        }
-        break;
-    case 3:
         if (addr == VIA_REG_IER && val == 0x20) {
             /*
              * VIA_REG_IER: update at end of SETUPTIMEK
@@ -957,10 +946,8 @@ static void via1_timer_calibration_hack(MOS6522Q800VIA1State *v1s, int addr,
 
 static uint64_t mos6522_q800_via1_read(void *opaque, hwaddr addr, unsigned size)
 {
-    MOS6522Q800VIA1State *v1s = MOS6522_Q800_VIA1(opaque);
-    MacVIAState *m = container_of(v1s, MacVIAState, mos6522_via1);
-    MOS6522State *ms = MOS6522(v1s);
-    int64_t now;
+    MOS6522Q800VIA1State *s = MOS6522_Q800_VIA1(opaque);
+    MOS6522State *ms = MOS6522(s);
     uint64_t ret;
 
     addr = (addr >> 9) & 0xf;
@@ -969,17 +956,6 @@ static uint64_t mos6522_q800_via1_read(void *opaque, hwaddr addr, unsigned size)
     case VIA_REG_A:
     case VIA_REG_ANH:
         ret = (ret & ~VIA1A_CPUID_MASK) | VIA1A_CPUID_Q800; /* Quadra 800 Id */
-        break;
-    case VIA_REG_T2CH:
-        if (m->timer_hack_state == 3) {
-            now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            if (now & 1) {
-                fprintf(stderr, "#### AUX TIMER HACK with size %d\n", size);
-                ret += 0x5;
-            } else {
-                fprintf(stderr, "**** NO TIMER HACK with size %d\n", size);
-            }
-        }
         break;
     }
     return ret;
@@ -1025,7 +1001,6 @@ static const MemoryRegionOps mos6522_q800_via1_ops = {
     .write = mos6522_q800_via1_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .unaligned = true,
         .min_access_size = 1,
         .max_access_size = 4,
     },
