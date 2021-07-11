@@ -164,7 +164,7 @@ static void nubus_device_realize(DeviceState *dev, Error **errp)
 
     if (nd->slot == -1) {
         /* No slot specified, find first available free slot */
-        s = ffs(nubus->slot_available_mask);
+        s = ctz32(nubus->slot_available_mask);
         if (s) {
             nd->slot = s;
         } else {
