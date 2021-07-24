@@ -22,12 +22,14 @@
 #include "migration/vmstate.h"
 #include "trace.h"
 
-#define VIDEO_BASE 0x00001000
+#define VIDEO_BASE 0x0
 #define DAFB_BASE  0x00800000
 
 #define MACFB_PAGE_SIZE 4096
 #define MACFB_VRAM_SIZE (4 * MiB)
 
+#define DAFB_MODE1      0x8
+#define DAFB_MODE2      0xc
 #define DAFB_SENSE      0x1c
 #define DAFB_RESET      0x200
 #define DAFB_LUT        0x213
@@ -89,6 +91,24 @@ static MacFbSense macfb_sense_table[] = {
     { MACFB_DISPLAY_SVGA, 0x7, 0x5 },
 };
 
+static MacFbMode macfb_mode_table[] = {
+    { MACFB_DISPLAY_VGA, 1, 0x100, 0x71e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 2, 0x100, 0x70e, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 4, 0x100, 0x706, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 8, 0x100, 0x702, 640, 480, 0x400, 0x1000 },
+    { MACFB_DISPLAY_VGA, 24, 0x100, 0x7ff, 640, 480, 0x1000, 0x1000 },
+    { MACFB_DISPLAY_VGA, 1, 0xd0 , 0x70e, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 2, 0xd0 , 0x706, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 4, 0xd0 , 0x702, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 8, 0xd0,  0x700, 800, 600, 0x340, 0xe00 },
+    { MACFB_DISPLAY_VGA, 24, 0x340, 0x100, 800, 600, 0xd00, 0xe00 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 1, 0x90, 0x706, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_2PAGE_MONO, 2, 0x90, 0x702, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 1, 0x90, 0x506, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 2, 0x90, 0x502, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 4, 0x90, 0x500, 1152, 870, 0x240, 0x80 },
+    { MACFB_DISPLAY_APPLE_21_COLOR, 8, 0x120, 0x5ff, 1152, 870, 0x480, 0x80 },
+};
 
 typedef void macfb_draw_line_func(MacfbState *s, uint8_t *d, uint32_t addr,
                                   int width);
@@ -246,7 +266,7 @@ static void macfb_draw_graphic(MacfbState *s)
     ram_addr_t page;
     uint32_t v = 0;
     int y, ymin;
-    int macfb_stride = (s->depth * s->width + 7) / 8;
+    int macfb_stride = s->mode->stride;
     macfb_draw_line_func *macfb_draw_line;
 
     switch (s->depth) {
@@ -278,7 +298,7 @@ static void macfb_draw_graphic(MacfbState *s)
                                              DIRTY_MEMORY_VGA);
 
     ymin = -1;
-    page = 0;
+    page = s->mode->offset;
     for (y = 0; y < s->height; y++, page += macfb_stride) {
         if (macfb_check_dirty(s, snap, page, macfb_stride)) {
             uint8_t *data_display;
@@ -355,6 +375,56 @@ static void macfb_sense_write(MacfbState *s, uint32_t val)
     return;
 }
 
+static void macfb_update_mode(MacfbState *s)
+{
+    s->width = s->mode->width;
+    s->height = s->mode->height;
+    s->depth = s->mode->depth;
+
+    trace_macfb_update_mode(s->width, s->height, s->depth);
+    macfb_invalidate_display(s);
+}
+
+static void macfb_mode_write(MacfbState *s)
+{
+    MacFbMode *macfb_mode;
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
+        macfb_mode = &macfb_mode_table[i];
+
+        if (s->type != macfb_mode->type) {
+            continue;
+        }
+
+        if ((s->mode1 & 0xff) == (macfb_mode->mode1 & 0xff) &&
+            (s->mode2 & 0xff) == (macfb_mode->mode2 & 0xff)) {
+            s->mode = macfb_mode;
+            macfb_update_mode(s);
+            break;
+        }
+    }
+}
+
+static MacFbMode *macfb_find_mode(MacfbDisplayType display_type,
+                                  uint16_t width, uint16_t height,
+                                  uint8_t depth)
+{
+    MacFbMode *macfb_mode;
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(macfb_mode_table); i++) {
+        macfb_mode = &macfb_mode_table[i];
+
+        if (display_type == macfb_mode->type && width == macfb_mode->width &&
+                height == macfb_mode->height && depth == macfb_mode->depth) {
+            return macfb_mode;
+        }
+    }
+
+    return NULL;
+}
+
 static void macfb_update_display(void *opaque)
 {
     MacfbState *s = opaque;
@@ -396,6 +466,12 @@ static uint64_t macfb_ctrl_read(void *opaque,
     uint64_t val = 0;
 
     switch (addr) {
+    case DAFB_MODE1:
+        val = s->mode1;
+        break;
+    case DAFB_MODE2:
+        val = s->mode2;
+        break;
     case DAFB_SENSE:
         val = macfb_sense_read(s);
         break;
@@ -412,6 +488,18 @@ static void macfb_ctrl_write(void *opaque,
 {
     MacfbState *s = opaque;
     switch (addr) {
+    case DAFB_MODE1 ... DAFB_MODE1 + 3:
+        s->mode1 = val;
+        if (val) {
+            macfb_mode_write(s);
+        }
+        break;
+    case DAFB_MODE2 ... DAFB_MODE2 + 3:
+        s->mode2 = val;
+        if (val) {
+            macfb_mode_write(s);
+        }
+        break;
     case DAFB_SENSE:
         macfb_sense_write(s, val);
         break;
@@ -465,9 +553,10 @@ static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
 {
     DisplaySurface *surface;
 
-    if (s->depth != 1 && s->depth != 2 && s->depth != 4 && s->depth != 8 &&
-        s->depth != 16 && s->depth != 24) {
-        error_setg(errp, "unknown guest depth %d", s->depth);
+    s->mode = macfb_find_mode(s->type, s->width, s->height, s->depth);
+    if (!s->mode) {
+        error_setg(errp, "unknown display mode: width %d, height %d, depth %d",
+                   s->width, s->height, s->depth);
         return;
     }
 
@@ -488,6 +577,8 @@ static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
     s->vram = memory_region_get_ram_ptr(&s->mem_vram);
     s->vram_bit_mask = MACFB_VRAM_SIZE - 1;
     memory_region_set_coalescing(&s->mem_vram);
+
+    macfb_update_mode(s);
 }
 
 static void macfb_sysbus_realize(DeviceState *dev, Error **errp)
@@ -550,7 +641,7 @@ static Property macfb_nubus_properties[] = {
     DEFINE_PROP_UINT32("width", MacfbNubusState, macfb.width, 640),
     DEFINE_PROP_UINT32("height", MacfbNubusState, macfb.height, 480),
     DEFINE_PROP_UINT8("depth", MacfbNubusState, macfb.depth, 8),
-    DEFINE_PROP_UINT8("display", MacfbSysBusState, macfb.type,
+    DEFINE_PROP_UINT8("display", MacfbNubusState, macfb.type,
                       MACFB_DISPLAY_VGA),
     DEFINE_PROP_END_OF_LIST(),
 };
