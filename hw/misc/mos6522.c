@@ -229,16 +229,7 @@ uint64_t mos6522_read(void *opaque, hwaddr addr, unsigned size)
 {
     MOS6522State *s = opaque;
     uint32_t val;
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
-    if (now >= s->timers[0].next_irq_time) {
-        mos6522_timer1_update(s, &s->timers[0], now);
-        s->ifr |= T1_INT;
-    }
-    if (now >= s->timers[1].next_irq_time) {
-        mos6522_timer2_update(s, &s->timers[1], now);
-        s->ifr |= T2_INT;
-    }
     switch (addr) {
     case VIA_REG_B:
         val = s->b;
