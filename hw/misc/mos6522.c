@@ -340,6 +340,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         s->timers[0].latch = (s->timers[0].latch & 0xff) | (val << 8);
         s->ifr &= ~T1_INT;
         set_counter(s, &s->timers[0], s->timers[0].latch);
+        mos6522_update_irq(s);
         break;
     case VIA_REG_T1LL:
         s->timers[0].latch = (s->timers[0].latch & 0xff00) | val;
@@ -347,6 +348,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     case VIA_REG_T1LH:
         s->timers[0].latch = (s->timers[0].latch & 0xff) | (val << 8);
         s->ifr &= ~T1_INT;
+        mos6522_update_irq(s);
         break;
     case VIA_REG_T2CL:
         s->timers[1].latch = (s->timers[1].latch & 0xff00) | val;
@@ -358,6 +360,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         s->timers[1].latch = (s->timers[1].latch & 0xff) | (val << 8);
         s->ifr &= ~T2_INT;
         set_counter(s, &s->timers[1], s->timers[1].latch);
+        mos6522_update_irq(s);
         break;
     case VIA_REG_SR:
         s->sr = val;
