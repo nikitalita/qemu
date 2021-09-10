@@ -154,7 +154,7 @@ static void mos6522_timer1_update(MOS6522State *s, MOS6522Timer *ti,
         return;
     }
     ti->next_irq_time = get_next_irq_time(s, ti, current_time);
-    if ((s->ier & T1_INT) == 0 || (s->acr & T1MODE) != T1MODE_CONT) {
+    if ((s->ier & T1_INT) == 0 || (s->acr & T1MODE_CONT) != T1MODE_CONT) {
         timer_del(ti->timer);
     } else {
         timer_mod(ti->timer, ti->next_irq_time);
@@ -303,6 +303,7 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
     MOS6522State *s = opaque;
     MOS6522DeviceClass *mdc = MOS6522_GET_CLASS(s);
+    uint8_t old_acr;
 
     trace_mos6522_write(addr, val);
 
@@ -357,9 +358,12 @@ void mos6522_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
         s->sr = val;
         break;
     case VIA_REG_ACR:
+        old_acr = s->acr;
         s->acr = val;
-        mos6522_timer1_update(s, &s->timers[0],
-                              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        if ((old_acr & T1MODE_CONT) != (s->acr & T1MODE_CONT)) {
+            mos6522_timer1_update(s, &s->timers[0],
+                                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        }
         break;
     case VIA_REG_PCR:
         s->pcr = val;
