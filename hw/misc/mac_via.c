@@ -1103,7 +1103,6 @@ static const MemoryRegionOps mos6522_q800_via1_ops = {
     .write = mos6522_q800_via1_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .unaligned = true,
         .min_access_size = 1,
         .max_access_size = 4,
     },

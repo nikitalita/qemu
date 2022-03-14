@@ -1946,7 +1946,7 @@ load_helper(CPUArchState *env, target_ulong addr, MemOpIdx oi,
         bool need_swap;
 
         /* For anything that is unaligned, recurse through full_load.  */
-        if ((addr & (size - 1)) != 0 && !(tlb_addr & TLB_MMIO)) {
+        if ((addr & (size - 1)) != 0) {
             goto do_unaligned_access;
         }
 
