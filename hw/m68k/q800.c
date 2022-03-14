@@ -403,7 +403,6 @@ static const MemoryRegionOps macio_alias_ops = {
     .write_with_attrs = macio_alias_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .unaligned = true,
         .min_access_size = 1,
         .max_access_size = 4,
     },

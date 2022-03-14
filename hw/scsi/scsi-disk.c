@@ -1557,7 +1557,7 @@ static void scsi_disk_emulate_mode_select(SCSIDiskReq *r, uint8_t *inbuf)
 
     /* We only support PF=1, SP=0.  */
     if ((r->req.cmd.buf[1] & 0x11) != 0x10) {
-        goto invalid_pf_zero;
+        goto invalid_field;
     }
 
     if (len < hdr_len) {
@@ -1604,8 +1604,8 @@ invalid_param_len:
     scsi_check_condition(r, SENSE_CODE(INVALID_PARAM_LEN));
     return;
 
-invalid_pf_zero:
-    scsi_req_complete(&r->req, GOOD);
+invalid_field:
+    scsi_check_condition(r, SENSE_CODE(INVALID_FIELD));
 }
 
 /* sector_num and nb_sectors expected to be in qdev blocksize */
@@ -2497,7 +2497,7 @@ static void scsi_cd_realize(SCSIDevice *dev, Error **errp)
 
     ctx = blk_get_aio_context(dev->conf.blk);
     aio_context_acquire(ctx);
-    s->qdev.blocksize = 512;
+    s->qdev.blocksize = 2048;
     s->qdev.type = TYPE_ROM;
     s->features |= 1 << SCSI_DISK_F_REMOVABLE;
     if (!s->product) {
