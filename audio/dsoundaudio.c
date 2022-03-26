@@ -318,21 +318,21 @@ static int dsound_get_status_in (LPDIRECTSOUNDCAPTUREBUFFER dscb,
     return 0;
 }
 
-static void dsound_clear_sample (HWVoiceOut *hw, LPDIRECTSOUNDBUFFER dsb,
-                                 dsound *s)
+static void dsound_clear_sample(HWVoiceOut *hw, LPDIRECTSOUNDBUFFER dsb,
+                                dsound *s, DWORD pos, DWORD len)
 {
     int err;
     LPVOID p1, p2;
     DWORD blen1, blen2, len1, len2;
 
-    err = dsound_lock_out (
+    err = dsound_lock_out(
         dsb,
         &hw->info,
-        0,
-        hw->size_emul,
+        pos,
+        len,
         &p1, &p2,
         &blen1, &blen2,
-        1,
+        false,
         s
         );
     if (err) {
@@ -403,7 +403,7 @@ static void dsound_enable_out(HWVoiceOut *hw, bool enable)
             return;
         }
 
-        dsound_clear_sample (hw, dsb, s);
+        dsound_clear_sample(hw, dsb, s, 0, hw->size_emul);
 
         hr = IDirectSoundBuffer_Play (dsb, 0, 0, DSBPLAY_LOOPING);
         if (FAILED (hr)) {
