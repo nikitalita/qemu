@@ -53,7 +53,10 @@ typedef struct {
 typedef struct {
     HWVoiceOut hw;
     LPDIRECTSOUNDBUFFER dsound_buffer;
+    DWORD ppos;
+    DWORD pos_clear, len_clear;
     bool first_time;
+    bool underrun;
     dsound *s;
 } DSoundVoiceOut;
 
@@ -404,6 +407,7 @@ static void dsound_enable_out(HWVoiceOut *hw, bool enable)
         }
 
         dsound_clear_sample(hw, dsb, s, 0, hw->size_emul);
+        ds->underrun = true;
 
         hr = IDirectSoundBuffer_Play (dsb, 0, 0, DSBPLAY_LOOPING);
         if (FAILED (hr)) {
@@ -431,22 +435,41 @@ static size_t dsound_buffer_get_free(HWVoiceOut *hw)
 {
     DSoundVoiceOut *ds = (DSoundVoiceOut *) hw;
     LPDIRECTSOUNDBUFFER dsb = ds->dsound_buffer;
+    size_t len_free, to_play;
     HRESULT hr;
-    DWORD ppos, wpos;
+    DWORD wpos;
+    DWORD to_clear;
 
-    hr = IDirectSoundBuffer_GetCurrentPosition(
-        dsb, &ppos, ds->first_time ? &wpos : NULL);
+    hr = IDirectSoundBuffer_GetCurrentPosition(dsb, &ds->ppos, &wpos);
     if (FAILED(hr)) {
         dsound_logerr(hr, "Could not get playback buffer position\n");
         return 0;
     }
 
-    if (ds->first_time) {
+    if (!ds->underrun) {
+        len_free = audio_ring_dist(ds->ppos, hw->pos_emul, hw->size_emul);
+        to_play = hw->size_emul - len_free;
+        if (hw->pending_emul >= to_play) {
+            hw->pending_emul = to_play;
+        } else {
+            /* buffer underrun */
+            to_clear = hw->size_emul - ds->len_clear;
+            if (to_clear > 0) {
+                dsound_clear_sample(hw, ds->dsound_buffer, ds->s,
+                                    ds->pos_clear, to_clear);
+            }
+            ds->underrun = true;
+        }
+    }
+    if (ds->underrun) {
+        len_free = audio_ring_dist(ds->ppos, wpos, hw->size_emul);
         hw->pos_emul = wpos;
-        ds->first_time = false;
+        hw->pending_emul = hw->size_emul - len_free;
+        ds->pos_clear = ds->ppos;
+        ds->len_clear = len_free;
     }
 
-    return audio_ring_dist(ppos, hw->pos_emul, hw->size_emul);
+    return len_free;
 }
 
 static void *dsound_get_buffer_out(HWVoiceOut *hw, size_t *size)
@@ -484,8 +507,38 @@ static size_t dsound_put_buffer_out(HWVoiceOut *hw, void *buf, size_t len)
         return 0;
     }
     hw->pos_emul = (hw->pos_emul + len) % hw->size_emul;
+    hw->pending_emul += len;
+    if (len >= ds->len_clear) {
+        ds->pos_clear = hw->pos_emul;
+        ds->len_clear = 0;
+    } else {
+        ds->len_clear -= len;
+    }
+    ds->underrun = false;
 
     return len;
+}
+
+static void dsound_run_buffer_out(HWVoiceOut *hw)
+{
+    DSoundVoiceOut *ds = (DSoundVoiceOut *)hw;
+    DWORD to_clear;
+
+    if (!ds->underrun) {
+        to_clear = audio_ring_dist(ds->ppos, ds->pos_clear, hw->size_emul);
+        to_clear = MIN(to_clear, hw->size_emul - ds->len_clear);
+        if (to_clear > 0) {
+            /*
+             * Clear the free buffer. If the audio stream stalls because the
+             * emulated audio device stopped without disabling audio this
+             * avoids looping audio sounds.
+             */
+            dsound_clear_sample(hw, ds->dsound_buffer, ds->s,
+                                ds->pos_clear, to_clear);
+            ds->pos_clear = (ds->pos_clear + to_clear) % hw->size_emul;
+            ds->len_clear += to_clear;
+        }
+    }
 }
 
 static void dsound_enable_in(HWVoiceIn *hw, bool enable)
@@ -702,6 +755,7 @@ static struct audio_pcm_ops dsound_pcm_ops = {
     .init_out = dsound_init_out,
     .fini_out = dsound_fini_out,
     .write    = audio_generic_write,
+    .run_buffer_out = dsound_run_buffer_out,
     .buffer_get_free = dsound_buffer_get_free,
     .get_buffer_out = dsound_get_buffer_out,
     .put_buffer_out = dsound_put_buffer_out,
