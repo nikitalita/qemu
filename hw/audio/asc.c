@@ -150,9 +150,8 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
     return val;
 }
 
-static int generate_fifo(ASCState *s, int maxsamples)
+static int generate_fifo(ASCState *s, uint8_t *buf, int maxsamples)
 {
-    uint8_t *buf = s->mixbuf + s->pos;
     int i, limit, count = 0;
 
     limit = MIN(MAX(s->fifos[0].cnt, s->fifos[1].cnt), maxsamples);
@@ -261,9 +260,8 @@ static int generate_fifo(ASCState *s, int maxsamples)
     return count;
 }
 
-static int generate_wavetable(ASCState *s, int maxsamples)
+static int generate_wavetable(ASCState *s, uint8_t *buf, int maxsamples)
 {
-    uint8_t *buf = s->mixbuf + s->pos;
     int channel, count = 0;
 
     while (count < maxsamples) {
@@ -297,84 +295,58 @@ static int generate_wavetable(ASCState *s, int maxsamples)
     return count;
 }
 
-static int write_audio(ASCState *s, int samples)
-{
-    int net = 0;
-    int pos = s->pos;
-
-    while (samples) {
-        int nbytes, wbytes, wsampl;
-
-        nbytes = samples << s->shift;
-        wbytes = AUD_write(s->voice,
-                           s->mixbuf + (pos << (s->shift - 1)),
-                           nbytes);
-        if (wbytes) {
-            wsampl = wbytes >> s->shift;
-
-            samples -= wsampl;
-            pos = (pos + wsampl) % s->samples;
-
-            net += wsampl;
-        } else {
-            break;
-        }
-    }
-
-    return net;
-}
-
 static void asc_out_cb(void *opaque, int free_b)
 {
     ASCState *s = opaque;
-    int samples, net = 0, to_play, written;
+    int to_generate, to_write;
 
-    samples = free_b >> s->shift;
-    if (!samples) {
+    to_write = free_b >> s->shift;
+    if (!to_write) {
         return;
     }
 
-    to_play = MIN(s->left, samples);
-    while (to_play) {
-        written = write_audio(s, to_play);
+    to_generate = MIN(s->samples - s->left, to_write - s->left);
+    while (to_generate > 0) {
+        int wpos = (s->pos + s->left) % s->samples;
+        int chunk = MIN(to_generate, s->samples - wpos);
+        uint8_t *buf = s->mixbuf + (wpos << s->shift);
+        int generated;
 
-        if (written) {
-            s->left -= written;
-            samples -= written;
-            to_play -= written;
-            s->pos = (s->pos + written) % s->samples;
-        } else {
-            return;
+        switch (s->regs[ASC_MODE] & 3) {
+        default: /* Off */
+            generated = 0;
+            break;
+        case 1: /* FIFO mode */
+            generated = generate_fifo(s, buf, chunk);
+            break;
+        case 2: /* Wave table mode */
+            generated = generate_wavetable(s, buf, chunk);
+            break;
         }
-    }
-
-    samples = MIN(samples, s->samples - s->pos);
-    if (!samples) {
-        return;
-    }
-
-    switch (s->regs[ASC_MODE] & 3) {
-    case 0: /* Off */
-        break;
-    case 1: /* FIFO mode */
-        samples = generate_fifo(s, samples);
-        break;
-    case 2: /* Wave table mode */
-        samples = generate_wavetable(s, samples);
-        break;
-    }
-
-    while (samples) {
-        written = write_audio(s, samples);
-
-        if (written) {
-            net += written;
-            samples -= written;
-            s->pos = (s->pos + written) % s->samples;
-        } else {
-            s->left = samples;
-            return;
+        if (!generated) {
+            break;
         }
+
+        s->left += generated;
+        to_generate -= generated;
+    }
+
+    to_write = MIN(to_write, s->left);
+    while (to_write) {
+        int chunk = MIN(to_write, s->samples - s->pos);
+        int wbytes, wsamples;
+
+        wbytes = AUD_write(s->voice,
+                           s->mixbuf + (s->pos << s->shift),
+                           chunk << s->shift);
+        if (!wbytes) {
+            break;
+        }
+
+        wsamples = wbytes >> s->shift;
+        to_write -= wsamples;
+        s->pos = (s->pos + wsamples) % s->samples;
+        s->left -= wsamples;
     }
 }
 
