@@ -58,7 +58,7 @@ struct ASCState {
 
     QEMUSoundCard card;
     SWVoiceOut *voice;
-    int8_t *mixbuf;
+    uint8_t *mixbuf;
     int left, pos, samples, shift;
 
     qemu_irq irq;

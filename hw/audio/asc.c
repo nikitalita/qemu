@@ -152,7 +152,7 @@ static uint8_t asc_fifo_get(ASCFIFOState *fs)
 
 static int generate_fifo(ASCState *s, int maxsamples)
 {
-    int8_t *buf = s->mixbuf + s->pos;
+    uint8_t *buf = s->mixbuf + s->pos;
     int i, limit, count = 0;
 
     limit = MIN(MAX(s->fifos[0].cnt, s->fifos[1].cnt), maxsamples);
@@ -173,7 +173,7 @@ static int generate_fifo(ASCState *s, int maxsamples)
     }
 
     while (count < limit) {
-        int8_t val;
+        uint8_t val;
         int16_t d, f0, f1;
         int32_t t;
         int shift, filter;
@@ -224,7 +224,7 @@ static int generate_fifo(ASCState *s, int maxsamples)
                  * 8-bit before writing to buffer. Does real hardware do the
                  * same?
                  */
-                buf[count * 2 + i] = (int8_t)(t / 256);
+                buf[count * 2 + i] = (uint8_t)(t / 256) ^ 0x80;
                 fs->xa_cnt++;
 
                 fs->xa_last[1] = fs->xa_last[0];
@@ -241,9 +241,9 @@ static int generate_fifo(ASCState *s, int maxsamples)
             case 0x80:
                 /* Raw mode */
                 if (fs->cnt) {
-                    val = asc_fifo_get(fs) ^ 0x80;
+                    val = asc_fifo_get(fs);
                 } else {
-                    val = 0;
+                    val = 0x80;
                 }
 
                 buf[count * 2 + i] = val;
@@ -263,12 +263,12 @@ static int generate_fifo(ASCState *s, int maxsamples)
 
 static int generate_wavetable(ASCState *s, int maxsamples)
 {
-    int8_t *buf = s->mixbuf + s->pos;
+    uint8_t *buf = s->mixbuf + s->pos;
     int channel, count = 0;
 
     while (count < maxsamples) {
-        int32_t left = 0, right = 0;
-        int8_t sample;
+        uint32_t left = 0, right = 0;
+        uint8_t sample;
 
         for (channel = 0; channel < 4; channel++) {
             ASCFIFOState *fs = &s->fifos[channel >> 1];
@@ -280,7 +280,7 @@ static int generate_wavetable(ASCState *s, int maxsamples)
 
             phase += incr;
             offset = (phase >> 15) & 0x1ff;
-            sample = fs->fifo[0x200 * (channel >> 1) + offset] ^ 0x80;
+            sample = fs->fifo[0x200 * (channel >> 1) + offset];
 
             stl_be_p(&s->regs[chanreg], phase);
 
@@ -664,7 +664,7 @@ static void asc_realize(DeviceState *dev, Error **errp)
 
     as.freq = 22257;
     as.nchannels = 2;
-    as.fmt = AUDIO_FORMAT_S8;
+    as.fmt = AUDIO_FORMAT_U8;
     as.endianness = AUDIO_HOST_ENDIANNESS;
 
     s->voice = AUD_open_out(&s->card, s->voice, "asc.out", s, asc_out_cb,
