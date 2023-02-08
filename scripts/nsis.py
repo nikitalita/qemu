@@ -32,12 +32,12 @@ def main():
     try:
         subprocess.run(["make", "install", "DESTDIR=" + destdir + os.path.sep])
         with open(
-            os.path.join(destdir + args.prefix, "system-emulations.nsh"), "w"
+            os.path.join(destdir + args.prefix.replace("C:",""), "system-emulations.nsh"), "w"
         ) as nsh, open(
-            os.path.join(destdir + args.prefix, "system-mui-text.nsh"), "w"
+            os.path.join(destdir + args.prefix.replace("C:",""), "system-mui-text.nsh"), "w"
         ) as muinsh:
             for exe in sorted(glob.glob(
-                os.path.join(destdir + args.prefix, "qemu-system-*.exe")
+                os.path.join(destdir + args.prefix.replace("C:",""), "qemu-system-*.exe")
             )):
                 exe = os.path.basename(exe)
                 arch = exe[12:-4]
@@ -61,7 +61,7 @@ def main():
                 !insertmacro MUI_DESCRIPTION_TEXT ${{Section_{0}}} "{1}"
                 """.format(arch, desc))
 
-        for exe in glob.glob(os.path.join(destdir + args.prefix, "*.exe")):
+        for exe in glob.glob(os.path.join(destdir + args.prefix.replace("C:",""), "*.exe")):
             signcode(exe)
 
         makensis = [
@@ -69,7 +69,7 @@ def main():
             "-V2",
             "-NOCD",
             "-DSRCDIR=" + args.srcdir,
-            "-DBINDIR=" + destdir + args.prefix,
+            "-DBINDIR=" + destdir + args.prefix.replace("C:",""),
         ]
         dlldir = "w32"
         if args.cpu == "x86_64":
@@ -79,10 +79,12 @@ def main():
             makensis += ["-DDLLDIR={0}/dll/{1}".format(args.srcdir, dlldir)]
 
         makensis += ["-DOUTFILE=" + args.outfile] + args.nsisargs
+        print(makensis)
         subprocess.run(makensis)
         signcode(args.outfile)
     finally:
-        shutil.rmtree(destdir)
+        pass
+        #shutil.rmtree(destdir)
 
 
 if __name__ == "__main__":
